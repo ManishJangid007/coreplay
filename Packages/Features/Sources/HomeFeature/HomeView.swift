@@ -6,16 +6,18 @@ import PlaybackCore
 import PlaybackEngine
 import SwiftData
 import SwiftUI
+import VideoFeature
 
 /// Home: Apple TV's "Watch Now" plus Apple Music's "Listen Now".
 ///
-/// What's playing, then Recently Played and Recently Added music. Continue
-/// Watching and Up Next for TV join in Milestone 4.
+/// What's playing, Continue Watching and Up Next, then Recently Played music
+/// and what was added recently.
 public struct HomeView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(LibraryManager.self) private var library
     @Environment(\.appActions) private var actions
     @Query(HomeView.recentlyAdded) private var recentlyAdded: [Album]
+    @Query(HomeView.anyVideo) private var anyVideo: [Video]
     @State private var recentlyPlayed: [Album] = []
 
     private static var recentlyAdded: FetchDescriptor<Album> {
@@ -24,29 +26,38 @@ public struct HomeView: View {
         return descriptor
     }
 
+    private static var anyVideo: FetchDescriptor<Video> {
+        var descriptor = FetchDescriptor<Video>()
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
     public init() {}
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 30) {
                 if let item = session.currentItem {
                     NowPlayingCard(item: item, controller: session.controller) {
                         actions.showPlayer()
                     }
+                    .frame(maxWidth: 900, alignment: .leading)
                 }
+                WatchNowRows()
                 if !recentlyPlayed.isEmpty {
                     AlbumShelf(title: "Recently Played", albums: recentlyPlayed)
                 }
+                RecentlyAddedVideoRows()
                 if !recentlyAdded.isEmpty {
-                    AlbumShelf(title: "Recently Added", albums: recentlyAdded)
+                    AlbumShelf(title: "Recently Added Music", albums: recentlyAdded)
                 }
-                if recentlyAdded.isEmpty {
+                if recentlyAdded.isEmpty, anyVideo.isEmpty {
                     welcome
+                        .frame(maxWidth: 900, alignment: .leading)
                 }
             }
             .padding(Metrics.contentPadding)
-            .frame(maxWidth: 900, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("Home")
         .task(id: library.revision) {
@@ -127,22 +138,14 @@ private struct AlbumShelf: View {
     let albums: [Album]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2.bold())
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 16) {
-                    ForEach(albums) { album in
-                        NavigationLink(value: album) {
-                            AlbumCell(album: album)
-                                .frame(width: 160)
-                        }
-                        .buttonStyle(.plain)
-                    }
+        Shelf(title) {
+            ForEach(albums) { album in
+                NavigationLink(value: album) {
+                    AlbumCell(album: album)
+                        .frame(width: 160)
                 }
-                .scrollTargetLayout()
+                .buttonStyle(.plain)
             }
-            .scrollTargetBehavior(.viewAligned)
         }
     }
 }

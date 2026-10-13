@@ -25,7 +25,7 @@ public struct VideoPlayerView: View {
 
     private let onClose: () -> Void
 
-    /// - Parameter onClose: Dismisses the player (iOS) or closes the window (macOS).
+    /// - Parameter onClose: Dismisses the player and returns to the library.
     public init(onClose: @escaping () -> Void) {
         self.onClose = onClose
     }
@@ -90,10 +90,18 @@ public struct VideoPlayerView: View {
                 scheduleAutoHide()
             }
         }
-        .preferredColorScheme(.dark)
+        // At the end of the last video, go back to where it was started from.
+        .onChange(of: controller.state) { _, state in
+            if state == .ended, controller.hasVideo, !session.queue.hasNext {
+                close()
+            }
+        }
         #if os(iOS)
+        .preferredColorScheme(.dark)
         .statusBarHidden(!controlsVisible)
         .persistentSystemOverlays(controlsVisible ? .automatic : .hidden)
+        #else
+        .environment(\.colorScheme, .dark)
         #endif
         .sheet(isPresented: $showsOptions, onDismiss: optionsDismissed) {
             PlaybackOptionsView(onAddSubtitleFile: { importsSubtitleAfterOptions = true })
@@ -168,14 +176,15 @@ public struct VideoPlayerView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            #if os(iOS)
             Button(action: close) {
-                Image(systemName: "xmark")
+                Image(systemName: closeSymbol)
                     .font(.headline)
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.glass)
             .accessibilityLabel(Text("Close"))
+            #if os(macOS)
+            .help("Back to Library (Esc)")
             #endif
 
             VStack(alignment: .leading, spacing: 2) {
@@ -195,6 +204,19 @@ public struct VideoPlayerView: View {
                 .frame(width: 32, height: 32)
                 .accessibilityLabel(Text("AirPlay"))
 
+            #if os(macOS)
+            Button {
+                NSApp.keyWindow?.toggleFullScreen(nil)
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.headline)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.glass)
+            .accessibilityLabel(Text("Full Screen"))
+            .help("Full Screen (F)")
+            #endif
+
             Button {
                 hideTask?.cancel()
                 showsOptions = true
@@ -205,9 +227,25 @@ public struct VideoPlayerView: View {
             }
             .buttonStyle(.glass)
             .accessibilityLabel(Text("Playback Options"))
+            #if os(macOS)
+            .help("Audio, Subtitles, Speed and More")
+            #endif
         }
         .padding(.horizontal, 20)
+        #if os(macOS)
+        // Clear of the window's close, minimise and zoom buttons.
+        .padding(.top, 34)
+        #else
         .padding(.top, 12)
+        #endif
+    }
+
+    private var closeSymbol: String {
+        #if os(macOS)
+        "chevron.backward"
+        #else
+        "xmark"
+        #endif
     }
 
     private var centerTransport: some View {

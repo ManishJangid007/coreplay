@@ -9,14 +9,29 @@ import UIKit
 #endif
 
 /// The library as the app sees it: sources, scanning, playback items for
-/// library content, play counts and edits. Views read the models with
-/// `@Query` from `container`; this object does everything else.
+/// library content, play counts, watched state and edits. Views read the
+/// models with `@Query` from `container`; this object does everything else.
+///
+/// All background work runs one job at a time on `LibraryIndexer` (its own
+/// model context): scans, removals, TMDB lookups and frame grabs. Videos,
+/// shows and seasons are only ever written there, so the main context never
+/// races it; play history (`PlaybackRecord`) is only written here.
 @MainActor
 @Observable
 public final class LibraryManager {
     public enum Activity: Equatable, Sendable {
         case idle
         case scanning(sourceID: UUID, sourceName: String, processed: Int, total: Int)
+        /// Fetching details and artwork from TMDB.
+        case lookingUp
+    }
+
+    /// One unit of background work.
+    enum Job: Equatable {
+        case scan(UUID)
+        case remove(UUID)
+        case lookUp
+        case thumbnails
     }
 
     public enum LibraryError: LocalizedError {
@@ -44,14 +59,24 @@ public final class LibraryManager {
     /// Bumped whenever scans, play counts or edits change the library, for
     /// views that compute things `@Query` can't express.
     public private(set) var revision = 0
+    /// Watched state and resume positions by content key (see `watchState(for:)`).
+    public internal(set) var watchStates: [String: WatchState] = [:]
+    /// Whether a TMDB key is set (Settings ▸ Metadata).
+    public internal(set) var hasMetadataKey = false
+    /// The last lookup problem (a rejected key, no connection), for Settings.
+    public internal(set) var metadataProblem: String?
+    /// Grabs frames for video artwork; set by the app (it lives in PlaybackEngine).
+    @ObservationIgnored public var frameSource: (any VideoFrameSource)?
 
     @ObservationIgnored private var indexerTask: Task<LibraryIndexer, Never>?
-    @ObservationIgnored private var roots: [UUID: URL] = [:]
+    @ObservationIgnored var roots: [UUID: URL] = [:]
     @ObservationIgnored private var scopedRoots: [UUID: URL] = [:]
-    @ObservationIgnored private var queue: [UUID] = []
+    @ObservationIgnored private var jobs: [Job] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
+    @ObservationIgnored private var currentJob: (job: Job, task: Task<Void, Never>)?
     @ObservationIgnored private var lastFullScan: Date?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored var metadataKey: String?
     #if os(macOS)
     @ObservationIgnored private var watchers: [UUID: FolderWatcher] = [:]
     @ObservationIgnored private var pendingWatchRescans: Set<UUID> = []
@@ -74,11 +99,22 @@ public final class LibraryManager {
             : ArtworkStore.defaultDirectory
         artworkStore = ArtworkStore(directory: artworkDirectory)
         lastError = openError
+        if !inMemory {
+            metadataKey = MetadataKeyStore.load()
+            hasMetadataKey = metadataKey != nil
+        }
     }
 
     public var context: ModelContext { container.mainContext }
 
-    public var isScanning: Bool { activity != .idle }
+    func bumpRevision() {
+        revision += 1
+    }
+
+    public var isScanning: Bool {
+        if case .scanning = activity { return true }
+        return false
+    }
 
     // MARK: - Starting up
 
@@ -92,6 +128,7 @@ public final class LibraryManager {
             connect(source)
         }
         save()
+        loadWatchStates()
         scanAll()
     }
 
@@ -105,12 +142,12 @@ public final class LibraryManager {
     public func scanAll() {
         lastFullScan = .now
         for source in sources() {
-            enqueue(source.id)
+            enqueue(.scan(source.id))
         }
     }
 
     public func rescan(_ source: Source) {
-        enqueue(source.id)
+        enqueue(.scan(source.id))
     }
 
     public func sources() -> [Source] {
@@ -138,7 +175,7 @@ public final class LibraryManager {
         context.insert(source)
         save()
         connect(source)
-        enqueue(source.id)
+        enqueue(.scan(source.id))
         return source
     }
 
@@ -161,7 +198,7 @@ public final class LibraryManager {
         context.insert(source)
         save()
         connect(source)
-        enqueue(source.id)
+        enqueue(.scan(source.id))
     }
     #endif
 
@@ -169,7 +206,11 @@ public final class LibraryManager {
     /// themselves are untouched).
     public func remove(_ source: Source) {
         let id = source.id
-        queue.removeAll { $0 == id }
+        jobs.removeAll { $0 == .scan(id) }
+        // A scan of this source stops at its next batch.
+        if let currentJob, currentJob.job == .scan(id) {
+            currentJob.task.cancel()
+        }
         roots[id] = nil
         if let scoped = scopedRoots.removeValue(forKey: id) {
             scoped.stopAccessingSecurityScopedResource()
@@ -177,18 +218,7 @@ public final class LibraryManager {
         #if os(macOS)
         watchers.removeValue(forKey: id)?.stop()
         #endif
-        Task {
-            let indexer = await indexer()
-            do {
-                try await indexer.removeSource(id: id)
-                let keys = try await indexer.artworkKeysInUse()
-                let store = artworkStore
-                await Task.detached(priority: .utility) { store.removeAll(except: keys) }.value
-            } catch {
-                lastError = "Couldn\u{2019}t remove the source: \(error.localizedDescription)"
-            }
-            revision += 1
-        }
+        enqueue(.remove(id), first: true)
     }
 
     /// The folder (or file) a source points at, while it's connected.
@@ -228,10 +258,14 @@ public final class LibraryManager {
         tracks.compactMap(playbackItem(for:))
     }
 
-    /// Videos (until Milestone 4 classifies them) play with a title from the file name.
+    /// Any library file: songs and videos with their library details, other
+    /// files with a title from the file name.
     public func playbackItem(for file: MediaFile) -> PlaybackItem? {
         if let track = file.track {
             return playbackItem(for: track)
+        }
+        if let video = file.video {
+            return playbackItem(for: video)
         }
         guard file.isAvailable, let url = url(for: file) else { return nil }
         return PlaybackItem(url: url, kind: file.kind, enginePreference: file.enginePreference, libraryID: file.id)
@@ -316,11 +350,15 @@ public final class LibraryManager {
         revision += 1
     }
 
-    // MARK: - Scanning
+    // MARK: - Background jobs
 
-    private func enqueue(_ id: UUID) {
-        if !queue.contains(id) {
-            queue.append(id)
+    func enqueue(_ job: Job, first: Bool = false) {
+        if !jobs.contains(job) {
+            if first {
+                jobs.insert(job, at: 0)
+            } else {
+                jobs.append(job)
+            }
         }
         guard worker == nil else { return }
         worker = Task { [weak self] in
@@ -329,13 +367,90 @@ public final class LibraryManager {
     }
 
     private func drainQueue() async {
-        while !queue.isEmpty {
-            let id = queue.removeFirst()
-            await scan(sourceID: id)
+        while !jobs.isEmpty {
+            let job = jobs.removeFirst()
+            let task = Task { [weak self] in
+                guard let self else { return }
+                await self.perform(job)
+            }
+            currentJob = (job, task)
+            await task.value
+            currentJob = nil
         }
         activity = .idle
         worker = nil
     }
+
+    private func perform(_ job: Job) async {
+        switch job {
+        case .scan(let id):
+            await scan(sourceID: id)
+            // New videos get details and artwork once the scans are done.
+            enqueue(.lookUp)
+            enqueue(.thumbnails)
+        case .remove(let id):
+            await removeSource(id: id)
+        case .lookUp:
+            await lookUpBatch()
+        case .thumbnails:
+            if jobs.contains(.lookUp) {
+                // Lookups may bring real artwork; take frames after them.
+                enqueue(.thumbnails)
+            } else {
+                await thumbnailBatch()
+            }
+        }
+    }
+
+    private func removeSource(id: UUID) async {
+        let indexer = await indexer()
+        do {
+            try await indexer.removeSource(id: id)
+            let keys = try await indexer.artworkKeysInUse()
+            let store = artworkStore
+            await Task.detached(priority: .utility) { store.removeAll(except: keys) }.value
+        } catch {
+            lastError = "Couldn\u{2019}t remove the source: \(error.localizedDescription)"
+        }
+        revision += 1
+    }
+
+    /// One batch of TMDB lookups; queues another while there's more to do,
+    /// behind any scans that arrived meanwhile.
+    private func lookUpBatch() async {
+        guard let key = metadataKey else { return }
+        let client = TMDBClient(key: key)
+        let indexer = await indexer()
+        activity = .lookingUp
+        do {
+            let settled = try await indexer.lookUpPending(client: client, artworkStore: artworkStore)
+            metadataProblem = nil
+            if settled > 0 {
+                revision += 1
+                enqueue(.lookUp)
+            }
+        } catch is CancellationError {
+            // Picked up again after the next scan.
+        } catch let failure as TMDBClient.Failure {
+            metadataProblem = failure.localizedDescription
+        } catch {
+            // Offline or a timeout: try again with the next scan.
+            metadataProblem = "Couldn\u{2019}t reach TMDB: \(error.localizedDescription)"
+        }
+        activity = .idle
+    }
+
+    private func thumbnailBatch() async {
+        guard let frameSource else { return }
+        let indexer = await indexer()
+        let tried = await indexer.generateThumbnails(frameSource: frameSource, roots: roots, artworkStore: artworkStore)
+        if tried > 0 {
+            revision += 1
+            enqueue(.thumbnails)
+        }
+    }
+
+    // MARK: - Scanning
 
     private func scan(sourceID id: UUID) async {
         guard let source = source(id: id) else { return }
@@ -360,10 +475,11 @@ public final class LibraryManager {
         } catch {
             lastError = "Couldn\u{2019}t finish scanning \u{201C}\(name)\u{201D}: \(error.localizedDescription)"
         }
+        activity = .idle
         revision += 1
     }
 
-    private func indexer() async -> LibraryIndexer {
+    func indexer() async -> LibraryIndexer {
         if let indexerTask {
             return await indexerTask.value
         }
@@ -459,7 +575,7 @@ public final class LibraryManager {
         Task {
             try? await Task.sleep(for: .seconds(2))
             pendingWatchRescans.remove(id)
-            enqueue(id)
+            enqueue(.scan(id))
         }
     }
     #endif
@@ -492,25 +608,25 @@ public final class LibraryManager {
 
     // MARK: - Lookups
 
-    private func source(id: UUID) -> Source? {
+    func source(id: UUID) -> Source? {
         var descriptor = FetchDescriptor<Source>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
     }
 
-    private func mediaFile(id: UUID) -> MediaFile? {
+    func mediaFile(id: UUID) -> MediaFile? {
         var descriptor = FetchDescriptor<MediaFile>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
     }
 
-    private func existingRecord(contentKey: String) -> PlaybackRecord? {
+    func existingRecord(contentKey: String) -> PlaybackRecord? {
         var descriptor = FetchDescriptor<PlaybackRecord>(predicate: #Predicate { $0.contentKey == contentKey })
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
     }
 
-    private func playbackRecord(contentKey: String) -> PlaybackRecord {
+    func playbackRecord(contentKey: String) -> PlaybackRecord {
         if let existing = existingRecord(contentKey: contentKey) {
             return existing
         }
@@ -519,7 +635,7 @@ public final class LibraryManager {
         return record
     }
 
-    private func save() {
+    func save() {
         do {
             try context.save()
         } catch {

@@ -40,7 +40,8 @@ appears, so Claude can start builds while you're away from the keyboard.
 App/
   Coreplay/           App entry, AppModel (opening files, presentation), assets
   Platform/iOS/       Tab bar + mini player accessory, full-screen player, Files picker
-  Platform/macOS/     Sidebar window, playback bar, video window, menus, Finder/Dock opening
+  Platform/macOS/     Sidebar window, playback bar, the player over the window, menus,
+                      Finder/Dock opening
   Support/            Info.plist (document types, background audio), macOS entitlements
 Config/Base.xcconfig  Team, bundle ID prefix, version
 Design/               Source artwork for the logo and app icon
@@ -54,13 +55,17 @@ Packages/
   NowPlaying/         PlaybackSession, Up Next queue, MPNowPlayingInfoCenter,
                       remote commands, audio session
   DesignSystem/       Palette, metrics, motion, artwork views, artwork-derived
-                      backgrounds, scrubber and transport controls
-  Features/           HomeFeature, MusicFeature, LibraryFeature (Sources, Videos),
+                      backgrounds, scrubber and transport controls, shelves,
+                      badges, Cover Flow
+  Features/           HomeFeature, MusicFeature, VideoFeature (movies, shows,
+                      home videos, Fix Match, artwork), LibraryFeature (Sources),
                       SearchFeature, PlayerFeature, SettingsFeature
-  MediaLibrary/       SwiftData model, sources and bookmarks, the scanner,
-                      artwork cache, play counts, Edit Info
+  MediaLibrary/       SwiftData model (versioned, with migrations), sources and
+                      bookmarks, the scanner, TMDB lookups, video frames as
+                      artwork, artwork cache, play counts and watched state, Edit Info
   MetadataProviders/  Embedded tag reader (ID3, FLAC/Ogg, MP4, APE, WAV/AIFF),
-                      file-name fallbacks, name keys. Online lookups come later.
+                      file-name fallbacks, name keys, video names and container
+                      details (MP4, MKV, AVI), .nfo files, the TMDB client
   Networking/         Placeholder (Milestone 7)
 ```
 
@@ -77,12 +82,14 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 
 ```
  Sources (folders, "On My iPhone", ~/Music)  ──▶  LibraryIndexer (background SwiftData context)
-                                                    │  TagReader + PathMetadata per new or changed file
+                                                    │  songs: TagReader + PathMetadata
+                                                    │  videos: VideoProbe + VideoNameParser + .nfo + local posters
+                                                    │  then TMDB lookups and frames from the videos
                                                     │  ArtworkStore: thumbnail, grid and large JPEGs
                                                     ▼
-                         Source · MediaFile · Track · Album · Artist · Genre · PlaybackRecord
+          Source · MediaFile · Track · Album · Artist · Genre · Video · TVShow · Season · PlaybackRecord
                                                     │
-                     @Query in the Music, Home and Search screens · LibraryManager for everything else
+                     @Query in the library, Home and Search screens · LibraryManager for everything else
 ```
 
 - **Sources** are folders the user picks (kept as security-scoped bookmarks),
@@ -101,6 +108,20 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Edit Info** changes are remembered per field and never overwritten by a rescan.
 - **Play counts** use a content fingerprint, so history survives moving a file.
   A song counts as played after it has played for half its length or four minutes.
+- **Videos** are sorted by their names into movies (`Heat (1995).mkv`),
+  episodes (`Show S01E02.mkv`, `Show/Season 1/02.mkv`) and home videos
+  (everything else, phone and camera names included). Sources ▸ Videos in
+  This Folder overrides that per folder. `.nfo` files and `poster.jpg` /
+  `fanart.jpg` beside the videos win over names.
+- **TMDB** (Settings ▸ Metadata, with your own key) fills in posters,
+  backdrops, synopses, cast and episode titles, a few items at a time in the
+  background. Fix Match picks a different entry; Edit Info changes stick.
+- **Video artwork**: anything without a poster or still gets a frame from
+  about a tenth of the way in; Choose Artwork picks another frame or an image.
+- **Watched state** follows the TV app: resume after the first minute, watched
+  from 92% on. Positions live in `PlaybackRecord`, by content fingerprint.
+- **Upgrades**: the schema is versioned (`LibrarySchemaV1`, `V2`) with a
+  migration plan, and a test opens a real version 1 library to prove it.
 
 ## How playback works
 

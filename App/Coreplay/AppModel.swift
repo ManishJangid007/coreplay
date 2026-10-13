@@ -3,6 +3,7 @@ import MediaLibrary
 import NowPlaying
 import Observation
 import PlaybackCore
+import PlaybackEngine
 import SettingsFeature
 import UniformTypeIdentifiers
 
@@ -26,21 +27,14 @@ final class AppModel {
     /// iOS: the Files picker, for files to play or a folder to add.
     var isFileImporterPresented = false
     var importMode: ImportMode = .files
-    /// iOS: the full-screen player.
+    /// The full player: a full-screen cover on iPhone and iPad, and on the
+    /// Mac a layer over the main window (video and Now Playing stay in the
+    /// same window, as in the TV and Music apps).
     var isPlayerPresented = false
     /// iOS: the Settings sheet.
     var isSettingsPresented = false
-    /// macOS: bumped to ask the main window to open the video window (fallback
-    /// for when `openVideoWindow` hasn't been set up yet).
-    var videoWindowRequest = 0
     /// Shown when nothing in a selection could be played.
     var openErrorMessage: String?
-    #if os(macOS)
-    /// Opens the video window. Set by the main window from its `openWindow`
-    /// action, which keeps working after that window closes, so files opened
-    /// from Finder or the Dock still get a video window.
-    @ObservationIgnored var openVideoWindow: (() -> Void)?
-    #endif
 
     @ObservationIgnored private var listeningTask: Task<Void, Never>?
 
@@ -49,6 +43,7 @@ final class AppModel {
         self.settings = settings
         self.session = PlaybackSession(configuration: settings.engineConfiguration)
         self.library = LibraryManager()
+        library.frameSource = FrameGrabber.shared
         let session = self.session
         settings.onEngineConfigurationChange = { configuration in
             session.updateConfiguration(configuration)
@@ -57,7 +52,8 @@ final class AppModel {
 
     // MARK: Library
 
-    /// Starts the library (reconnect sources, scan what changed) and play counting.
+    /// Starts the library (reconnect sources, scan what changed), play
+    /// counting and video progress.
     func startLibrary() {
         library.start()
         startListeningTracker()
@@ -93,21 +89,37 @@ final class AppModel {
         }
     }
 
-    /// Counts plays with `ListeningTracker` and records durations the
-    /// scanner couldn't work out, for songs played from the library.
+    /// Counts plays with `ListeningTracker`, saves where videos got to with
+    /// `WatchProgressTracker`, and records durations the scanner couldn't
+    /// work out, for anything played from the library.
     private func startListeningTracker() {
         guard listeningTask == nil else { return }
         listeningTask = Task { [weak self] in
             var tracker = ListeningTracker()
+            var progress = WatchProgressTracker()
+            var libraryIDs: [UUID: UUID] = [:] // playback item → library file
             var timedItem: UUID?
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
                 let controller = self.session.controller
                 let item = controller.currentItem
-                if tracker.update(itemID: item?.id, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying),
+                if let item, let libraryID = item.libraryID {
+                    libraryIDs[item.id] = libraryID
+                }
+                if item?.kind != .video,
+                   tracker.update(itemID: item?.id, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying),
                    let libraryID = item?.libraryID {
                     self.library.recordPlay(libraryID: libraryID)
+                }
+                // Videos from the library: resume positions and watched state.
+                let videoID = item?.kind == .video && item?.libraryID != nil ? item?.id : nil
+                for save in progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying) {
+                    guard let libraryID = libraryIDs[save.itemID] else { continue }
+                    self.library.recordProgress(libraryID: libraryID, position: save.position, duration: save.duration, outcome: save.outcome)
+                    if save.itemID != item?.id {
+                        libraryIDs[save.itemID] = nil
+                    }
                 }
                 if let item, let libraryID = item.libraryID, timedItem != item.id, let duration = controller.duration {
                     timedItem = item.id
@@ -157,18 +169,22 @@ final class AppModel {
         }
     }
 
-    /// Shows the full player (iOS) or the video window (macOS).
+    /// Shows the full player: video, or Now Playing for audio.
+    /// - Parameter expectingVideo: On the Mac, audio opened from Finder keeps
+    ///   playing in the playback bar instead of covering the library.
     func presentPlayer(expectingVideo: Bool? = nil) {
-        #if os(iOS)
-        isPlayerPresented = true
-        #else
-        guard expectingVideo ?? session.controller.hasVideo else { return }
-        if let openVideoWindow {
-            openVideoWindow()
-        } else {
-            videoWindowRequest += 1
-        }
+        #if os(macOS)
+        if expectingVideo == false { return }
         #endif
+        isPlayerPresented = true
+    }
+
+    /// Closes the full player. Video pauses, as in the TV app; audio plays on.
+    func dismissPlayer() {
+        if session.controller.hasVideo {
+            session.pause()
+        }
+        isPlayerPresented = false
     }
 
     #if os(macOS)

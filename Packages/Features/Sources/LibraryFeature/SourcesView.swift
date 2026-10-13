@@ -35,7 +35,12 @@ public struct SourcesView: View {
                         #endif
                 }
             } footer: {
-                Text("Coreplay reads music and videos from these places and keeps them up to date. Your files stay where they are.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Coreplay reads music and videos from these places and keeps them up to date. Your files stay where they are.")
+                    if library.activity == .lookingUp {
+                        Label("Getting details and artwork from TMDB\u{2026}", systemImage: "arrow.down.circle")
+                    }
+                }
             }
 
             if let error = library.lastError {
@@ -103,6 +108,14 @@ public struct SourcesView: View {
         Button("Check for New Files", systemImage: "arrow.clockwise") {
             library.rescan(source)
         }
+        Picker(selection: Binding(get: { source.videoContent }, set: { library.setVideoContent($0, for: source) })) {
+            ForEach(VideoFolderContent.allCases) { content in
+                Text(content.title).tag(content)
+            }
+        } label: {
+            Label("Videos in This Folder", systemImage: "film.stack")
+        }
+        .pickerStyle(.menu)
         #if os(macOS)
         if let url = library.location(of: source) {
             Button("Show in Finder", systemImage: "folder") {
@@ -171,6 +184,9 @@ private struct SourceRow: View {
         }
         if parts.isEmpty {
             parts.append(source.lastScanDate == nil ? "Waiting to be read" : "No music or videos yet")
+        }
+        if source.videoContent != .automatic {
+            parts.append(source.videoContent.title)
         }
         if let lastScan = source.lastScanDate {
             parts.append("updated \(lastScan.formatted(.relative(presentation: .named)))")

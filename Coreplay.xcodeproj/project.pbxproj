@@ -18,6 +18,7 @@
 		EEFA8098F5D55DA1BFBA0F5F /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0210DA6B334482D14A93E9B7 /* HomeFeature */; };
 		FB78ADE97C290BEE7DAD27D2 /* MediaLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 4BCFDE072928EEC6BC17D322 /* MediaLibrary */; };
 		F7275DDEF6D053ECA560B4DC /* MusicFeature in Frameworks */ = {isa = PBXBuildFile; productRef = CF6DF0CF8040FA0C309CA247 /* MusicFeature */; };
+		2B9B824B60F57E50E1007098 /* VideoFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 41E80B58D9C1011ADDCE2C91 /* VideoFeature */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,6 +63,7 @@
 				C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */,
 				825EB36AC6FF3E6BD254B5E9 /* SettingsFeature in Frameworks */,
 				F7275DDEF6D053ECA560B4DC /* MusicFeature in Frameworks */,
+				2B9B824B60F57E50E1007098 /* VideoFeature in Frameworks */,
 				FB78ADE97C290BEE7DAD27D2 /* MediaLibrary in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -159,6 +161,7 @@
 				A263173EBA82166102D4D2E3 /* PlayerFeature */,
 				33E28E723514AAB2953A9137 /* SettingsFeature */,
 				CF6DF0CF8040FA0C309CA247 /* MusicFeature */,
+				41E80B58D9C1011ADDCE2C91 /* VideoFeature */,
 				4BCFDE072928EEC6BC17D322 /* MediaLibrary */,
 			);
 			productName = Coreplay;
@@ -502,6 +505,10 @@
 		CF6DF0CF8040FA0C309CA247 /* MusicFeature */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MusicFeature;
+		};
+		41E80B58D9C1011ADDCE2C91 /* VideoFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VideoFeature;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

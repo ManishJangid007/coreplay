@@ -8,9 +8,11 @@ import PlaybackEngine
 import PlayerFeature
 import SearchFeature
 import SwiftUI
+import VideoFeature
 
 /// The Mac window: a Music-style sidebar (Home, Music, Videos, Library) and a
-/// playback bar along the bottom. Video plays in its own window.
+/// playback bar along the bottom. Video and Now Playing open over the library
+/// in the same window, as in the TV and Music apps.
 struct MacRootView: View {
     enum SidebarItem: Hashable {
         case home
@@ -19,65 +21,79 @@ struct MacRootView: View {
     }
 
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
     @State private var selection: SidebarItem? = .home
 
+    private var showsPlayer: Bool {
+        model.isPlayerPresented && model.session.hasItem
+    }
+
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selection) {
-                Label("Search", systemImage: "magnifyingglass")
-                    .tag(SidebarItem.search)
-                Label("Home", systemImage: "house")
-                    .tag(SidebarItem.home)
-                Section("Music") {
-                    ForEach(LibrarySection.music) { section in
-                        Label(section.title, systemImage: section.systemImage)
-                            .tag(SidebarItem.section(section))
+        ZStack {
+            NavigationSplitView {
+                List(selection: $selection) {
+                    Label("Search", systemImage: "magnifyingglass")
+                        .tag(SidebarItem.search)
+                    Label("Home", systemImage: "house")
+                        .tag(SidebarItem.home)
+                    Section("Music") {
+                        ForEach(LibrarySection.music) { section in
+                            Label(section.title, systemImage: section.systemImage)
+                                .tag(SidebarItem.section(section))
+                        }
+                    }
+                    Section("Videos") {
+                        ForEach(LibrarySection.videos) { section in
+                            Label(section.title, systemImage: section.systemImage)
+                                .tag(SidebarItem.section(section))
+                        }
+                    }
+                    Section("Library") {
+                        Label(LibrarySection.sources.title, systemImage: LibrarySection.sources.systemImage)
+                            .tag(SidebarItem.section(.sources))
                     }
                 }
-                Section("Videos") {
-                    ForEach(LibrarySection.videos) { section in
-                        Label(section.title, systemImage: section.systemImage)
-                            .tag(SidebarItem.section(section))
-                    }
+                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
+            } detail: {
+                NavigationStack {
+                    detail
+                        .libraryDestinations()
                 }
-                Section("Library") {
-                    Label(LibrarySection.sources.title, systemImage: LibrarySection.sources.systemImage)
-                        .tag(SidebarItem.section(.sources))
+                // A new sidebar item starts a fresh navigation stack.
+                .id(selection)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if model.session.hasItem {
+                    PlaybackBar()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
-        } detail: {
-            NavigationStack {
-                detail
-                    .musicDestinations()
+            .onKeyPress(.space) {
+                guard model.session.hasItem else { return .ignored }
+                model.session.togglePlayPause()
+                return .handled
             }
-            // A new sidebar item starts a fresh navigation stack.
-            .id(selection)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if model.session.hasItem {
-                PlaybackBar()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+
+            if showsPlayer {
+                MacPlayerOverlay()
+                    .ignoresSafeArea()
+                    .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .bottom).combined(with: .opacity)))
+                    .zIndex(1)
             }
         }
+        .toolbar(showsPlayer ? .hidden : .automatic, for: .windowToolbar)
         .animation(Motion.standard, value: model.session.hasItem)
+        .animation(.spring(duration: 0.45, bounce: 0.08), value: showsPlayer)
         .dropDestination(for: URL.self) { urls, _ in
             model.handleDrop(urls)
             return !urls.isEmpty
         }
-        .onKeyPress(.space) {
-            guard model.session.hasItem else { return .ignored }
-            model.session.togglePlayPause()
-            return .handled
-        }
         .task {
-            let openWindow = openWindow
-            model.openVideoWindow = { openWindow(id: VideoWindow.id) }
             model.startLibrary()
         }
-        .onChange(of: model.videoWindowRequest) {
-            openWindow(id: VideoWindow.id)
+        .onChange(of: model.session.hasItem) { _, hasItem in
+            if !hasItem {
+                model.isPlayerPresented = false
+            }
         }
         .alert("Can\u{2019}t Open", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
@@ -104,7 +120,7 @@ struct MacRootView: View {
         return AppActions(
             openFiles: { model.presentOpenPanel() },
             openSettings: {},
-            showPlayer: { model.presentPlayer(expectingVideo: true) },
+            showPlayer: { model.presentPlayer() },
             addLibraryFolder: { model.addLibraryFolder() }
         )
     }

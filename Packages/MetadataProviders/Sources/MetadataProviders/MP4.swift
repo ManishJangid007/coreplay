@@ -33,11 +33,11 @@ enum MP4 {
         return result
     }
 
-    static func parse(_ source: ByteSource) throws -> AudioTags {
-        // Walk the top level with header-only reads: `mdat` can be gigabytes,
-        // and `moov` may come before or after it.
+    /// The whole `moov` box (header included). The top level is walked with
+    /// header-only reads: `mdat` can be gigabytes, and `moov` may come before
+    /// or after it.
+    static func movieBox(_ source: ByteSource) throws -> [UInt8]? {
         var position: Int64 = 0
-        var moov: [UInt8]?
         var steps = 0
         while position + 8 <= source.size, steps < 64 {
             let header = try source.bytes(at: position, count: 16)
@@ -51,14 +51,17 @@ enum MP4 {
             }
             guard size >= 8 else { break }
             if type == "moov" {
-                guard size <= Int64(TagReader.maximumArtworkBytes) * 2 else { break }
-                moov = try source.bytes(at: position, count: Int(size))
-                break
+                guard size <= Int64(TagReader.maximumArtworkBytes) * 2 else { return nil }
+                return try source.bytes(at: position, count: Int(size))
             }
             position += size
             steps += 1
         }
-        guard let moov else { return AudioTags() }
+        return nil
+    }
+
+    static func parse(_ source: ByteSource) throws -> AudioTags {
+        guard let moov = try movieBox(source) else { return AudioTags() }
         var tags = AudioTags()
         let headerLength = (try? Bytes.u32be(moov, 0)) == 1 ? 16 : 8
         for box in boxes(in: moov, from: headerLength, to: moov.count) {
@@ -91,7 +94,7 @@ enum MP4 {
         return tags
     }
 
-    private static func movieDuration(_ bytes: [UInt8], _ box: Box) -> TimeInterval? {
+    static func movieDuration(_ bytes: [UInt8], _ box: Box) -> TimeInterval? {
         let start = box.payloadStart
         guard start < bytes.count else { return nil }
         let version = bytes[start]
@@ -168,7 +171,7 @@ enum MP4 {
     }
 
     /// `ilst`: one box per item, each holding `data` boxes.
-    private static func itemList(_ bytes: [UInt8], _ list: Box) -> AudioTags {
+    static func itemList(_ bytes: [UInt8], _ list: Box) -> AudioTags {
         var tags = AudioTags()
         var pictures: [EmbeddedArtwork] = []
         for item in boxes(in: bytes, from: list.payloadStart, to: list.end) {

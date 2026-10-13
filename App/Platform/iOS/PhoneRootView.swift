@@ -12,6 +12,7 @@ import SettingsFeature
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import VideoFeature
 
 /// iPhone and iPad: a tab bar that adapts to a sidebar on iPad, with the mini
 /// player in the tab bar's bottom accessory, like Apple Music.
@@ -31,7 +32,7 @@ struct PhoneRootView: View {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack {
                     HomeView()
-                        .musicDestinations()
+                        .libraryDestinations()
                 }
             }
             Tab("Music", systemImage: "music.note", value: AppTab.music) {
@@ -41,25 +42,25 @@ struct PhoneRootView: View {
                             LibrarySectionView(section: .playlists)
                         },
                     ])
-                    .musicDestinations()
+                    .libraryDestinations()
                 }
             }
             Tab("Videos", systemImage: "play.rectangle.on.rectangle", value: AppTab.videos) {
                 NavigationStack {
-                    LibraryIndexView(title: "Videos", sections: LibrarySection.videos)
-                        .musicDestinations()
+                    VideoLibraryView()
+                        .libraryDestinations()
                 }
             }
             Tab("Library", systemImage: "square.stack", value: AppTab.library) {
                 NavigationStack {
                     LibraryIndexView(title: "Library", sections: [.sources, .playlists])
-                        .musicDestinations()
+                        .libraryDestinations()
                 }
             }
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack {
                     SearchView()
-                        .musicDestinations()
+                        .libraryDestinations()
                 }
             }
         }

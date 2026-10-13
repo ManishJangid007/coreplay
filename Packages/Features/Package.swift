@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "HomeFeature", targets: ["HomeFeature"]),
         .library(name: "LibraryFeature", targets: ["LibraryFeature"]),
         .library(name: "MusicFeature", targets: ["MusicFeature"]),
+        .library(name: "VideoFeature", targets: ["VideoFeature"]),
         .library(name: "SearchFeature", targets: ["SearchFeature"]),
         .library(name: "PlayerFeature", targets: ["PlayerFeature"]),
         .library(name: "SettingsFeature", targets: ["SettingsFeature"]),
@@ -32,11 +33,22 @@ let package = Package(
             ]
         ),
         .target(
+            name: "VideoFeature",
+            dependencies: [
+                "DesignSystem",
+                "MediaLibrary",
+                "MusicFeature",
+                "NowPlaying",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+            ]
+        ),
+        .target(
             name: "HomeFeature",
             dependencies: [
                 "DesignSystem",
                 "MediaLibrary",
                 "MusicFeature",
+                "VideoFeature",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
                 .product(name: "PlaybackEngine", package: "PlaybackEngine"),
                 "NowPlaying",
@@ -48,6 +60,7 @@ let package = Package(
                 "DesignSystem",
                 "MediaLibrary",
                 "MusicFeature",
+                "VideoFeature",
                 "NowPlaying",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
             ]
@@ -58,6 +71,7 @@ let package = Package(
                 "DesignSystem",
                 "MediaLibrary",
                 "MusicFeature",
+                "VideoFeature",
                 "NowPlaying",
             ]
         ),
@@ -74,6 +88,7 @@ let package = Package(
             name: "SettingsFeature",
             dependencies: [
                 "DesignSystem",
+                "MediaLibrary",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
                 .product(name: "PlaybackEngine", package: "PlaybackEngine"),
                 "NowPlaying",

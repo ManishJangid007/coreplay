@@ -36,6 +36,16 @@ struct CoreplayCommands: Commands {
             }
             .disabled(!session.hasItem)
 
+            Button(model.isPlayerPresented ? "Hide Player" : "Show Player") {
+                if model.isPlayerPresented {
+                    model.dismissPlayer()
+                } else {
+                    model.presentPlayer()
+                }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
+            .disabled(!session.hasItem)
+
             Button("Stop") {
                 Task { await session.stop() }
             }

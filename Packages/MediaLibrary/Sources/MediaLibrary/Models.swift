@@ -1,17 +1,20 @@
 import Foundation
+import MetadataProviders
 import PlaybackCore
 import SwiftData
 
-// The library's SwiftData model.
+// The library's SwiftData model (schema version 2).
 //
-// `MediaFile` is the physical file; `Track` and the grouping models (`Album`,
-// `Artist`, `Genre`) sit on top for music. Movies, TV and home videos join in
-// Milestone 4 and playlists in Milestone 8. Play counts, positions and ratings
-// live in `PlaybackRecord`, keyed by a content fingerprint rather than a path,
-// so they survive moving or renaming a file (and can sync later on their own).
+// `MediaFile` is the physical file. `Track` and the grouping models (`Album`,
+// `Artist`, `Genre`) sit on top for music; `Video` with `TVShow` and `Season`
+// for movies, episodes and home videos (VideoModels.swift). Playlists join in
+// Milestone 8. Play counts, positions, watched state and ratings live in
+// `PlaybackRecord`, keyed by a content fingerprint rather than a path, so they
+// survive moving or renaming a file (and can sync later on their own).
 //
-// Every attribute has a default value, which keeps lightweight migrations
-// (and a future CloudKit-synced store) possible.
+// Every attribute has a default value or is optional, which keeps
+// lightweight migrations (and a future CloudKit-synced store) possible.
+// Changing a model means a new schema version: see MediaLibrary.swift.
 
 /// Where files come from.
 public enum SourceKind: String, Codable, Sendable, CaseIterable {
@@ -42,6 +45,8 @@ public final class Source {
     public var isAvailable: Bool = true
     public var audioFileCount: Int = 0
     public var videoFileCount: Int = 0
+    /// What the user said the folder's videos are (`VideoContentHint`).
+    public var videoHintRaw: String = VideoContentHint.automatic.rawValue
 
     @Relationship(deleteRule: .cascade, inverse: \MediaFile.source)
     public var files: [MediaFile] = []
@@ -55,6 +60,11 @@ public final class Source {
 
     public var kind: SourceKind {
         SourceKind(rawValue: kindRaw) ?? .folder
+    }
+
+    public var videoHint: VideoContentHint {
+        get { VideoContentHint(rawValue: videoHintRaw) ?? .automatic }
+        set { videoHintRaw = newValue.rawValue }
     }
 }
 
@@ -84,9 +94,31 @@ public final class MediaFile {
     public var bitRate: Int?
     public var isLossless: Bool = false
 
+    // Video details, read from the container (`VideoProbe`).
+    public var width: Int?
+    public var height: Int?
+    public var frameRate: Double?
+    public var videoCodec: String?
+    public var audioCodec: String?
+    /// `VideoInfo.DynamicRange` raw value.
+    public var dynamicRangeRaw: String?
+    public var hasAtmos: Bool = false
+    /// Comma-separated language codes of the audio and subtitle tracks.
+    public var audioLanguages: String?
+    public var subtitleLanguages: String?
+    public var hasSubtitles: Bool = false
+    public var hasSDHSubtitles: Bool = false
+    /// When and where a camera or phone recorded it.
+    public var recordedDate: Date?
+    public var location: String?
+    /// Bumped when the video reader learns more, so old files are read again.
+    public var videoProbeVersion: Int = 0
+
     public var source: Source?
     @Relationship(deleteRule: .cascade, inverse: \Track.file)
     public var track: Track?
+    @Relationship(deleteRule: .cascade, inverse: \Video.file)
+    public var video: Video?
 
     public init() {}
 
@@ -97,6 +129,18 @@ public final class MediaFile {
     public var enginePreference: EnginePreference {
         get { EnginePreference(rawValue: enginePreferenceRaw) ?? .automatic }
         set { enginePreferenceRaw = newValue.rawValue }
+    }
+
+    public var dynamicRange: VideoInfo.DynamicRange? {
+        dynamicRangeRaw.flatMap(VideoInfo.DynamicRange.init(rawValue:))
+    }
+
+    /// "4K", "HD" or "SD".
+    public var resolutionBadge: String? {
+        var info = VideoInfo(container: "")
+        info.width = width
+        info.height = height
+        return info.resolutionBadge
     }
 
     /// "Hi-Res Lossless", "Lossless" or nil, as Apple Music labels files.
@@ -246,7 +290,8 @@ public final class Genre {
     }
 }
 
-/// Play history for a file, keyed by its content fingerprint.
+/// Play history for a file, keyed by its content fingerprint. Only the main
+/// context writes these (scans never touch them).
 @Model
 public final class PlaybackRecord {
     #Index<PlaybackRecord>([\.contentKey], [\.lastPlayedDate])
@@ -254,10 +299,15 @@ public final class PlaybackRecord {
     public var contentKey: String = ""
     public var playCount: Int = 0
     public var lastPlayedDate: Date?
-    /// Resume position in seconds (videos and spoken word, Milestone 4).
+    /// Resume position in seconds, for videos past their first minute.
     public var position: Double?
     public var rating: Int?
     public var isFavorite: Bool = false
+    /// Watched to the end credits (or marked as watched).
+    public var isWatched: Bool = false
+    public var watchedDate: Date?
+    /// The running time when the position was saved, for progress bars.
+    public var duration: Double?
 
     public init(contentKey: String) {
         self.contentKey = contentKey

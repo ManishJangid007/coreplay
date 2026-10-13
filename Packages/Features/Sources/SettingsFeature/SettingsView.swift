@@ -1,4 +1,5 @@
 import DesignSystem
+import MediaLibrary
 import NowPlaying
 import PlaybackCore
 import PlaybackEngine
@@ -6,8 +7,8 @@ import SwiftUI
 
 /// Settings, grouped as Apple would: a `Form` on iOS and a tabbed `Settings`
 /// scene on the Mac. Only settings that do something today are shown; the
-/// rest of the plan's groups (Audio, Subtitles, Metadata, Privacy and Lock)
-/// appear as their features land.
+/// rest of the plan's groups (Audio, Subtitles, Privacy and Lock) appear as
+/// their features land.
 public struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
 
@@ -18,6 +19,10 @@ public struct SettingsView: View {
         TabView {
             Tab("Playback", systemImage: "play.rectangle") {
                 Form { PlaybackSettingsSection(settings: settings) }
+                    .formStyle(.grouped)
+            }
+            Tab("Metadata", systemImage: "film.stack") {
+                Form { MetadataSettingsSection() }
                     .formStyle(.grouped)
             }
             Tab("Network", systemImage: "network") {
@@ -39,6 +44,7 @@ public struct SettingsView: View {
         #else
         Form {
             PlaybackSettingsSection(settings: settings)
+            MetadataSettingsSection()
             NetworkSettingsSection(settings: settings)
             AdvancedSettingsSection(settings: settings)
             AboutSection()
@@ -58,6 +64,69 @@ private struct PlaybackSettingsSection: View {
             Text("Video")
         } footer: {
             Text("Uses the media engine in your device\u{2019}s chip for smoother playback and longer battery life. Turn off if a video shows artifacts. Applies to the next file you open.")
+        }
+    }
+}
+
+/// The user's TMDB key, for posters, synopses, cast and episode titles.
+private struct MetadataSettingsSection: View {
+    @Environment(LibraryManager.self) private var library
+    @State private var key = ""
+    @State private var isSaving = false
+    @State private var problem: String?
+
+    var body: some View {
+        Section {
+            if library.hasMetadataKey {
+                LabeledContent("TMDB") {
+                    Label("Connected", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                Button("Look Up Unmatched Titles Again") {
+                    library.lookUpUnmatchedAgain()
+                }
+                Button("Remove Key", role: .destructive) {
+                    library.removeMetadataKey()
+                }
+            } else {
+                SecureField("API Key or Read Access Token", text: $key)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .onSubmit { Task { await save() } }
+                HStack {
+                    Button("Save Key") {
+                        Task { await save() }
+                    }
+                    .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+                Link("Get a Free Key from TMDB", destination: URL(string: "https://www.themoviedb.org/settings/api")!)
+            }
+            if let message = problem ?? library.metadataProblem {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Movie and TV Details")
+        } footer: {
+            Text("Coreplay names movies and episodes from their files and any .nfo files beside them. With your own TMDB key it also fetches posters, backdrops, synopses, cast and episode titles. Only titles and years are sent, and the key stays in your Keychain. This product uses the TMDB API but is not endorsed or certified by TMDB.")
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        problem = nil
+        defer { isSaving = false }
+        do {
+            try await library.setMetadataKey(key)
+            key = ""
+        } catch {
+            problem = error.localizedDescription
         }
     }
 }

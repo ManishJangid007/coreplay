@@ -39,21 +39,11 @@ struct CoreplayApp: App {
             CoreplayCommands(model: model)
         }
 
-        Window("Video", id: VideoWindow.id) {
-            VideoWindow()
-                .environment(model)
-                .environment(model.session)
-                .environment(model.settings)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 960, height: 540)
-        .windowResizability(.contentMinSize)
-        .restorationBehavior(.disabled)
-
         Settings {
             SettingsView()
                 .environment(model.settings)
                 .environment(model.session)
+                .environment(model.library)
         }
         #endif
     }

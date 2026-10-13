@@ -5,6 +5,7 @@ import NowPlaying
 import PlaybackCore
 import SwiftData
 import SwiftUI
+import VideoFeature
 
 /// One search across the library, grouped by type, with scopes like Apple Music.
 public struct SearchView: View {
@@ -28,14 +29,14 @@ public struct SearchView: View {
                 EmptyStateView(
                     "Search Your Library",
                     systemImage: "magnifyingglass",
-                    message: "Find artists, albums, songs and videos."
+                    message: "Find artists, albums, songs, movies, shows and home videos."
                 )
             } else {
                 SearchResults(text: text, scope: scope)
             }
         }
         .navigationTitle("Search")
-        .searchable(text: $query, prompt: Text("Artists, Albums, Songs and More"))
+        .searchable(text: $query, prompt: Text("Movies, Shows, Artists, Albums and More"))
         .searchScopes($scope) {
             ForEach(Scope.allCases) { scope in
                 Text(scope.rawValue).tag(scope)
@@ -47,11 +48,13 @@ public struct SearchView: View {
 private struct SearchResults: View {
     @Environment(LibraryManager.self) private var library
     @Environment(PlaybackSession.self) private var session
-    @Environment(\.appActions) private var actions
     @Query private var artists: [Artist]
     @Query private var albums: [Album]
     @Query private var tracks: [Track]
-    @Query private var videos: [MediaFile]
+    @Query private var movies: [Video]
+    @Query private var shows: [TVShow]
+    @Query private var episodes: [Video]
+    @Query private var homeVideos: [Video]
     private let text: String
     private let scope: SearchView.Scope
 
@@ -84,12 +87,36 @@ private struct SearchResults: View {
         trackQuery.fetchLimit = 30
         _tracks = Query(trackQuery)
 
-        var videoQuery = FetchDescriptor<MediaFile>(
-            predicate: #Predicate { $0.kindRaw == "video" && $0.fileName.localizedStandardContains(text) },
-            sortBy: [SortDescriptor(\.fileName)]
+        let movieKind = VideoKind.movie.rawValue
+        var movieQuery = FetchDescriptor<Video>(
+            predicate: #Predicate { $0.kindRaw == movieKind && $0.title.localizedStandardContains(text) },
+            sortBy: [SortDescriptor(\.sortTitle)]
         )
-        videoQuery.fetchLimit = 20
-        _videos = Query(videoQuery)
+        movieQuery.fetchLimit = 12
+        _movies = Query(movieQuery)
+
+        var showQuery = FetchDescriptor<TVShow>(
+            predicate: #Predicate { $0.title.localizedStandardContains(text) },
+            sortBy: [SortDescriptor(\.sortTitle)]
+        )
+        showQuery.fetchLimit = 8
+        _shows = Query(showQuery)
+
+        let episodeKind = VideoKind.episode.rawValue
+        var episodeQuery = FetchDescriptor<Video>(
+            predicate: #Predicate { $0.kindRaw == episodeKind && $0.title.localizedStandardContains(text) },
+            sortBy: [SortDescriptor(\.sortTitle)]
+        )
+        episodeQuery.fetchLimit = 20
+        _episodes = Query(episodeQuery)
+
+        let homeKind = VideoKind.homeVideo.rawValue
+        var homeQuery = FetchDescriptor<Video>(
+            predicate: #Predicate { $0.kindRaw == homeKind && $0.title.localizedStandardContains(text) },
+            sortBy: [SortDescriptor(\.dateAdded, order: .reverse)]
+        )
+        homeQuery.fetchLimit = 20
+        _homeVideos = Query(homeQuery)
     }
 
     private var showsMusic: Bool { scope != .videos }
@@ -97,11 +124,29 @@ private struct SearchResults: View {
 
     var body: some View {
         let hasMusic = showsMusic && !(artists.isEmpty && albums.isEmpty && tracks.isEmpty)
-        let hasVideos = showsVideos && !videos.isEmpty
+        let hasVideos = showsVideos && !(movies.isEmpty && shows.isEmpty && episodes.isEmpty && homeVideos.isEmpty)
         if !hasMusic && !hasVideos {
             ContentUnavailableView.search(text: text)
         } else {
             List {
+                if showsVideos, !movies.isEmpty {
+                    Section("Movies") {
+                        ForEach(movies) { movie in
+                            NavigationLink(value: movie) {
+                                VideoRow(video: movie)
+                            }
+                        }
+                    }
+                }
+                if showsVideos, !shows.isEmpty {
+                    Section("TV Shows") {
+                        ForEach(shows) { show in
+                            NavigationLink(value: show) {
+                                ShowRow(show: show)
+                            }
+                        }
+                    }
+                }
                 if showsMusic, !artists.isEmpty {
                     Section("Artists") {
                         ForEach(artists) { artist in
@@ -133,16 +178,21 @@ private struct SearchResults: View {
                         }
                     }
                 }
-                if hasVideos {
-                    Section("Videos") {
-                        ForEach(videos) { file in
-                            Button {
-                                play(file)
-                            } label: {
-                                Label(PlaybackItem.displayTitle(for: URL(filePath: file.fileName)), systemImage: "play.rectangle")
+                if showsVideos, !episodes.isEmpty {
+                    Section("Episodes") {
+                        ForEach(episodes) { episode in
+                            NavigationLink(value: episode) {
+                                VideoRow(video: episode)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(!file.isAvailable)
+                        }
+                    }
+                }
+                if showsVideos, !homeVideos.isEmpty {
+                    Section("Home Videos") {
+                        ForEach(homeVideos) { video in
+                            NavigationLink(value: video) {
+                                VideoRow(video: video)
+                            }
                         }
                     }
                 }
@@ -161,13 +211,6 @@ private struct SearchResults: View {
         }
     }
 
-    private func play(_ file: MediaFile) {
-        guard let item = library.playbackItem(for: file) else { return }
-        Task {
-            await session.play(item)
-        }
-        actions.showPlayer()
-    }
 }
 
 private struct AlbumResultRow: View {

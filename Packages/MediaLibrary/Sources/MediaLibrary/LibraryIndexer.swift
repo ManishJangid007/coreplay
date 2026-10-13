@@ -38,6 +38,7 @@ struct ParsedFile: Sendable {
     var tags: AudioTags?
     var artworkKey: String?
     var path: PathMetadata
+    var video: ParsedVideo?
 }
 
 /// Fields Edit Info can change. Rescans leave edited fields alone.
@@ -65,6 +66,7 @@ public actor LibraryIndexer {
     ) async throws -> ScanSummary {
         guard let source = try source(id: sourceID) else { return ScanSummary() }
         let found = isSingleFile ? Self.singleFile(root) : Self.enumerate(root)
+        let hint = source.videoHint
 
         var summary = ScanSummary()
         var existing: [String: MediaFile] = [:]
@@ -77,7 +79,9 @@ public actor LibraryIndexer {
             if let current = existing[file.relativePath],
                current.fileSize == file.size,
                abs(current.modificationDate.timeIntervalSince(file.modificationDate)) < 0.001,
-               current.kind == file.kind {
+               current.kind == file.kind,
+               // Videos from before the video library (or an older reader) are read again.
+               current.kind != .video || (current.video != nil && current.videoProbeVersion >= Self.videoProbeVersion) {
                 if !current.isAvailable {
                     current.isAvailable = true
                 }
@@ -94,7 +98,10 @@ public actor LibraryIndexer {
         try modelContext.save()
 
         let grouper = LibraryGrouper(context: modelContext)
+        let videoGrouper = VideoGrouper(context: modelContext)
         let folderArtwork = FolderArtworkCache()
+        let videoFolders = VideoFolderCache()
+        var touchedVideos = false
         progress(ScanProgress(sourceID: sourceID, processed: 0, total: pending.count))
 
         var index = 0
@@ -106,7 +113,7 @@ public actor LibraryIndexer {
             let parsed = await withTaskGroup(of: ParsedFile.self) { group in
                 for file in batch {
                     group.addTask {
-                        Self.parse(file, artworkStore: artworkStore, folderArtwork: folderArtwork)
+                        Self.parse(file, hint: hint, artworkStore: artworkStore, folderArtwork: folderArtwork, videoFolders: videoFolders)
                     }
                 }
                 var results: [ParsedFile] = []
@@ -121,7 +128,8 @@ public actor LibraryIndexer {
                 } else {
                     summary.updated += 1
                 }
-                upsert(item, source: source, existing: &existing, grouper: grouper)
+                upsert(item, source: source, existing: &existing, grouper: grouper, videoGrouper: videoGrouper)
+                touchedVideos = touchedVideos || item.found.kind == .video
             }
             sinceSave += batch.count
             if sinceSave >= Self.saveInterval || index >= pending.count {
@@ -133,6 +141,9 @@ public actor LibraryIndexer {
 
         if summary.updated > 0 {
             try grouper.removeOrphans()
+        }
+        if touchedVideos {
+            try videoGrouper.removeOrphans()
         }
         source.isAvailable = true
         source.lastScanDate = .now
@@ -159,9 +170,10 @@ public actor LibraryIndexer {
         modelContext.delete(source)
         try modelContext.save()
         try LibraryGrouper(context: modelContext).removeOrphans()
+        try VideoGrouper(context: modelContext).removeOrphans()
     }
 
-    /// Artwork keys that tracks, albums or artists still use.
+    /// Artwork keys that anything in the library still uses.
     public func artworkKeysInUse() throws -> Set<String> {
         var keys = Set<String>()
         for track in try modelContext.fetch(FetchDescriptor<Track>()) {
@@ -170,18 +182,31 @@ public actor LibraryIndexer {
         for album in try modelContext.fetch(FetchDescriptor<Album>()) {
             if let key = album.artworkKey { keys.insert(key) }
         }
+        for video in try modelContext.fetch(FetchDescriptor<Video>()) {
+            for key in [video.posterKey, video.backdropKey, video.stillKey, video.thumbnailKey, video.customArtworkKey] {
+                if let key { keys.insert(key) }
+            }
+        }
+        for show in try modelContext.fetch(FetchDescriptor<TVShow>()) {
+            for key in [show.posterKey, show.backdropKey, show.customArtworkKey] {
+                if let key { keys.insert(key) }
+            }
+        }
+        for season in try modelContext.fetch(FetchDescriptor<Season>()) {
+            if let key = season.posterKey { keys.insert(key) }
+        }
         return keys
     }
 
     // MARK: - Merging
 
-    private func source(id: UUID) throws -> Source? {
+    func source(id: UUID) throws -> Source? {
         var descriptor = FetchDescriptor<Source>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try modelContext.fetch(descriptor).first
     }
 
-    private func upsert(_ parsed: ParsedFile, source: Source, existing: inout [String: MediaFile], grouper: LibraryGrouper) {
+    private func upsert(_ parsed: ParsedFile, source: Source, existing: inout [String: MediaFile], grouper: LibraryGrouper, videoGrouper: VideoGrouper) {
         let found = parsed.found
         let file: MediaFile
         if let current = existing[found.relativePath] {
@@ -212,6 +237,13 @@ public actor LibraryIndexer {
             file.isLossless = format.isLossless
         }
 
+        if found.kind != .video, let video = file.video {
+            file.video = nil
+            modelContext.delete(video)
+        }
+        if found.kind == .video, let parsedVideo = parsed.video {
+            upsertVideo(parsedVideo, file: file, grouper: videoGrouper)
+        }
         guard found.kind == .audio else {
             if let track = file.track {
                 file.track = nil
@@ -334,14 +366,19 @@ public actor LibraryIndexer {
         )
     }
 
-    static func parse(_ file: FoundFile, artworkStore: ArtworkStore, folderArtwork: FolderArtworkCache) -> ParsedFile {
+    static func parse(_ file: FoundFile, hint: VideoContentHint, artworkStore: ArtworkStore, folderArtwork: FolderArtworkCache, videoFolders: VideoFolderCache) -> ParsedFile {
         var tags: AudioTags?
         var contentKey = ""
-        if let source = try? FileByteSource(url: file.url) {
+        var video: ParsedVideo?
+        let source = try? FileByteSource(url: file.url)
+        if let source {
             contentKey = (try? ContentKey.compute(source)) ?? ""
             if file.kind == .audio {
                 tags = try? TagReader.read(source)
             }
+        }
+        if file.kind == .video {
+            video = parseVideo(file, source: source, hint: hint, artworkStore: artworkStore, folders: videoFolders)
         }
         if contentKey.isEmpty {
             contentKey = "path:\(file.relativePath)#\(file.size)"
@@ -357,6 +394,6 @@ public actor LibraryIndexer {
             tags?.artwork = nil
         }
         let name = file.relativePath.isEmpty ? file.url.lastPathComponent : file.relativePath
-        return ParsedFile(found: file, contentKey: contentKey, tags: tags, artworkKey: artworkKey, path: PathMetadata(relativePath: name))
+        return ParsedFile(found: file, contentKey: contentKey, tags: tags, artworkKey: artworkKey, path: PathMetadata(relativePath: name), video: video)
     }
 }

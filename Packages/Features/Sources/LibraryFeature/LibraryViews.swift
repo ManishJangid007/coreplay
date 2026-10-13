@@ -2,6 +2,7 @@ import DesignSystem
 import MediaLibrary
 import MusicFeature
 import SwiftUI
+import VideoFeature
 
 /// Library sections, for the Mac sidebar and the iPhone tabs.
 public enum LibrarySection: String, Hashable, CaseIterable, Identifiable, Sendable {
@@ -51,10 +52,6 @@ public enum LibrarySection: String, Hashable, CaseIterable, Identifiable, Sendab
             "Playlists you make, smart playlists and imported M3U or XSPF files will appear here."
         case .composers:
             "Composers from your files\u{2019} tags will appear here."
-        case .movies:
-            "Movies with posters, cast and synopsis arrive in the next update. Until then, your videos are in Home Videos."
-        case .tvShows:
-            "TV shows grouped by season, with episode stills and watched state, arrive in the next update. Until then, your videos are in Home Videos."
         default:
             ""
         }
@@ -79,11 +76,15 @@ public struct LibrarySectionView: View {
             MusicCategoryView(category: .songs)
         case .genres:
             MusicCategoryView(category: .genres)
+        case .movies:
+            MoviesView()
+        case .tvShows:
+            TVShowsView()
         case .homeVideos:
-            VideosView()
+            HomeVideosView()
         case .sources:
             SourcesView()
-        case .composers, .playlists, .movies, .tvShows:
+        case .composers, .playlists:
             EmptyStateView(
                 "Coming Soon",
                 systemImage: section.systemImage,

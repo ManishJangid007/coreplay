@@ -6,12 +6,16 @@ import SwiftUI
 
 /// Full-screen Now Playing for audio, modelled on Apple Music: an artwork
 /// background, large artwork that shrinks when paused, scrubber, transport,
-/// volume, AirPlay and the queue.
+/// volume, AirPlay and the queue. On the Mac it fills the main window, with
+/// the artwork beside the controls and Up Next as a panel on the right.
 public struct NowPlayingView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsQueue = false
     @State private var showsOptions = false
+    #if os(macOS)
+    @FocusState private var hasKeyboardFocus: Bool
+    #endif
     private let onClose: () -> Void
 
     public init(onClose: @escaping () -> Void) {
@@ -21,15 +25,60 @@ public struct NowPlayingView: View {
     private var controller: PlaybackController { session.controller }
 
     public var body: some View {
+        content
+            .foregroundStyle(Palette.primaryOnDark)
+            .background {
+                ArtworkBackground(artworkData: controller.metadata.artworkData)
+            }
+            #if os(iOS)
+            .preferredColorScheme(.dark)
+            .sheet(isPresented: $showsQueue) {
+                UpNextView()
+                    .environment(session)
+            }
+            #else
+            .environment(\.colorScheme, .dark)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($hasKeyboardFocus)
+            .onAppear { hasKeyboardFocus = true }
+            .onKeyPress(.escape) {
+                onClose()
+                return .handled
+            }
+            .onKeyPress(.space) {
+                session.togglePlayPause()
+                return .handled
+            }
+            #endif
+            .sheet(isPresented: $showsOptions) {
+                PlaybackOptionsView()
+                    .environment(session)
+            }
+    }
+
+    // MARK: Layouts
+
+    @ViewBuilder
+    private var content: some View {
+        #if os(macOS)
+        macLayout
+        #else
+        phoneLayout
+        #endif
+    }
+
+    #if os(iOS)
+    private var phoneLayout: some View {
         GeometryReader { proxy in
             if proxy.size.height < 560 {
-                // Short spaces (iPhone landscape, a small Mac window): artwork beside the controls.
+                // Short spaces (iPhone landscape): artwork beside the controls.
                 HStack(spacing: 28) {
                     artwork(side: min(proxy.size.height - 32, proxy.size.width * 0.4))
                     VStack(spacing: 10) {
                         header
                         Spacer(minLength: 0)
-                        titles
+                        titles(large: false)
                         ControllerScrubber(controller: controller)
                         transport
                         volume
@@ -44,7 +93,7 @@ public struct NowPlayingView: View {
                     Spacer(minLength: 12)
                     artwork(side: min(proxy.size.width - 56, proxy.size.height - 420, 560))
                     Spacer(minLength: 12)
-                    titles
+                    titles(large: false)
                         .padding(.bottom, 16)
                     ControllerScrubber(controller: controller)
                         .padding(.bottom, 12)
@@ -60,20 +109,61 @@ public struct NowPlayingView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .foregroundStyle(Palette.primaryOnDark)
-        .background {
-            ArtworkBackground(artworkData: controller.metadata.artworkData)
+    }
+    #endif
+
+    #if os(macOS)
+    private var macLayout: some View {
+        HStack(spacing: 0) {
+            GeometryReader { proxy in
+                let wide = proxy.size.width > 720
+                Group {
+                    if wide {
+                        HStack(spacing: 56) {
+                            artwork(side: max(min(proxy.size.height - 150, proxy.size.width * 0.45, 600), 120))
+                            controls(large: true)
+                                .frame(maxWidth: 440)
+                        }
+                    } else {
+                        VStack(spacing: 22) {
+                            artwork(side: max(min(proxy.size.height - 330, proxy.size.width - 80, 440), 100))
+                            controls(large: false)
+                                .frame(maxWidth: 440)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 60)
+            .padding(.bottom, 32)
+
+            if showsQueue {
+                UpNextView()
+                    .environment(session)
+                    .frame(width: 320)
+                    .background(.ultraThinMaterial)
+                    .transition(.move(edge: .trailing))
+            }
         }
-        .preferredColorScheme(.dark)
-        .sheet(isPresented: $showsQueue) {
-            UpNextView()
-                .environment(session)
+        .overlay(alignment: .top) {
+            header
+                .padding(.horizontal, 20)
+                .padding(.top, 34) // clear of the window buttons
         }
-        .sheet(isPresented: $showsOptions) {
-            PlaybackOptionsView()
-                .environment(session)
+        .animation(Motion.respecting(reduceMotion), value: showsQueue)
+    }
+
+    private func controls(large: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            titles(large: large)
+            ControllerScrubber(controller: controller)
+            transport
+            volume
+            footer
         }
     }
+    #endif
 
     // MARK: Pieces
 
@@ -93,36 +183,32 @@ public struct NowPlayingView: View {
 
     private var header: some View {
         HStack {
-            Button(action: onClose) {
-                Image(systemName: "chevron.down")
-                    .font(.headline)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("Close Now Playing"))
+            CircleButton(systemImage: "chevron.down", label: "Close Now Playing", action: onClose)
+                #if os(macOS)
+                .help("Back to Library (Esc)")
+                #endif
             Spacer()
-            Button {
+            CircleButton(systemImage: "ellipsis", label: "Playback Options") {
                 showsOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.headline)
-                    .frame(width: 36, height: 36)
             }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("More"))
+            #if os(macOS)
+            .help("Playback Options")
+            #endif
         }
+        #if os(iOS)
         .padding(.top, 8)
+        #endif
     }
 
-    private var titles: some View {
+    private func titles(large: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(controller.displayTitle)
-                .font(.title2.weight(.bold))
+                .font(large ? .largeTitle.weight(.bold) : .title2.weight(.bold))
                 .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.7)
             if let subtitle = artistLine {
                 Text(subtitle)
-                    .font(.title3)
+                    .font(large ? .title2 : .title3)
                     .foregroundStyle(Palette.secondaryOnDark)
                     .lineLimit(1)
             }
@@ -132,26 +218,29 @@ public struct NowPlayingView: View {
     }
 
     private var artistLine: String? {
-        let parts = [controller.displaySubtitle, controller.metadata.albumTitle].compactMap { $0 }
+        let parts = [controller.displaySubtitle, controller.metadata.albumTitle].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " \u{2014} ")
     }
 
     private var transport: some View {
         HStack {
+            Spacer(minLength: 0)
             TransportButton("Previous", systemImage: "backward.fill", pointSize: 30) {
                 Task { await session.previous() }
             }
-            Spacer()
+            Spacer(minLength: 24)
             PlayPauseButton(isPlaying: controller.isPlaying, pointSize: 46) {
                 session.togglePlayPause()
             }
-            Spacer()
+            Spacer(minLength: 24)
             TransportButton("Next", systemImage: "forward.fill", pointSize: 30) {
                 Task { await session.next() }
             }
             .disabled(!session.queue.hasNext)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
+        .frame(maxWidth: 360)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -167,6 +256,7 @@ public struct NowPlayingView: View {
                 .accessibilityLabel(Text("Volume"))
             #else
             Slider(value: volumeBinding, in: 0...1)
+                .controlSize(.small)
                 .tint(.white)
                 .accessibilityLabel(Text("Volume"))
             #endif
@@ -179,39 +269,29 @@ public struct NowPlayingView: View {
 
     private var footer: some View {
         HStack {
-            Button {
+            FooterButton(
+                systemImage: "shuffle",
+                label: session.isShuffled ? "Shuffle On" : "Shuffle Off",
+                isOn: session.isShuffled
+            ) {
                 session.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-                    .font(.title3)
-                    .foregroundStyle(session.isShuffled ? Palette.primaryOnDark : Palette.tertiaryOnDark)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(session.isShuffled ? "Shuffle On" : "Shuffle Off"))
             Spacer()
             RoutePickerView()
-                .frame(width: 36, height: 36)
+                .frame(width: 28, height: 28)
                 .accessibilityLabel(Text("AirPlay"))
             Spacer()
-            Button {
-                showsQueue = true
-            } label: {
-                Image(systemName: "list.bullet")
-                    .font(.title3)
+            FooterButton(systemImage: "list.bullet", label: "Up Next", isOn: showsQueue) {
+                showsQueue.toggle()
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Up Next"))
             Spacer()
-            Button {
+            FooterButton(
+                systemImage: session.repeatMode == .one ? "repeat.1" : "repeat",
+                label: repeatLabel,
+                isOn: session.repeatMode != .off
+            ) {
                 session.cycleRepeatMode()
-            } label: {
-                Image(systemName: session.repeatMode == .one ? "repeat.1" : "repeat")
-                    .font(.title3)
-                    .foregroundStyle(session.repeatMode == .off ? Palette.tertiaryOnDark : Palette.primaryOnDark)
-                    .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(repeatLabel))
         }
         .padding(.horizontal, 12)
     }
@@ -229,5 +309,49 @@ public struct NowPlayingView: View {
             get: { Double(min(controller.volume, 1)) },
             set: { controller.setVolume(Float($0)) }
         )
+    }
+}
+
+/// A round translucent button for the top corners of Now Playing.
+private struct CircleButton: View {
+    let systemImage: String
+    let label: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .background(.white.opacity(isHovering ? 0.24 : 0.14), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Palette.primaryOnDark)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(Text(label))
+    }
+}
+
+/// Shuffle, Up Next and Repeat: dim when off, bright with a tint when on.
+private struct FooterButton: View {
+    let systemImage: String
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 32, height: 28)
+                .background(isOn ? Color.white.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .foregroundStyle(isOn ? Palette.primaryOnDark : Palette.tertiaryOnDark)
+                .contentTransition(.symbolEffect(.replace))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
     }
 }

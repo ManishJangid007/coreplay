@@ -4,13 +4,136 @@
 | --- | --- | --- |
 | 1 | Foundation: project, packages, design system, VLCKit, basic player on iPhone and Mac | Done |
 | 2 | Engine: protocol, both engines, router, events, tracks and subtitles, Now Playing, remote commands, background audio | Done |
-| 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Built; builds and tests pass, needs a run with real music |
-| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Next |
-| 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | |
+| 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Done (checked on the Mac) |
+| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Built; builds and tests pass, needs a run with real videos |
+| 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Next |
 | 6 | VLC parity: feature checklist against the sample suite | |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
+
+## Your additions (October 13)
+
+These come on top of the plan; nothing in the plan was dropped for them.
+
+| Request | Where it lands | Status |
+| --- | --- | --- |
+| Frame previews above the timeline while scrubbing, like YouTube | Milestone 5, with the scrub-preview sprite sheets the plan lists | The frame grabber it needs (`FrameGrabber`) is built |
+| Video plays inside the app's own window, with every playback option in the player | Milestone 4 | Done on the Mac: the player covers the library in the same window (F for full screen, Esc to go back). iPhone and iPad already play full-screen inside the app. Options are behind the player's ••• button |
+| Artwork for videos without any: a frame picked automatically, another frame of your choice, or your own image | Milestone 4 | Done (Choose Artwork) |
+| An optional iPod-style Cover Flow view, with smooth scrolling | Milestone 4 | Done for Albums, Movies and TV Shows; the grid stays the default |
+| Clicking the music artwork opens Now Playing in the same window, and its controls look right | Milestone 4 | Done on the Mac: Now Playing fills the window, with a new layout |
+| One app that feels the same everywhere, with a very large library | Every milestone; measured in Milestone 9 | Ongoing |
+
+---
+
+## Milestone 4: Video library — October 13, 2026
+
+### What was built
+
+**Movies, TV shows and home videos** (new `VideoFeature` module)
+- **Movies:** a poster grid sorted by title, recently added or release date, with an Unwatched Only filter and Cover Flow.
+- **Movie pages:**
+  - the backdrop with the title over it, and year, running time, age rating and genres;
+  - badges for 4K, HDR10, HLG, Dolby Vision, Dolby Atmos, 5.1/7.1 and CC/SDH, read from the file;
+  - Play or Resume, Play from Beginning, and a watched toggle;
+  - tagline, synopsis, cast with photos, and an Information section (genre, release, directors, studio, picture, sound, languages, subtitles, file and size).
+- **TV shows:** a poster grid, and show pages with:
+  - a button for the episode to watch next ("Resume S2, E3", "Play S2, E4");
+  - season tabs, with Specials last;
+  - each season's episodes with stills, numbers, synopses, running times, progress bars and watched checkmarks;
+  - Mark as Watched or Unwatched for an episode, a season or the whole show.
+- **Home videos:** stills grouped by the month they were recorded, newest first. Tapping one plays it.
+- **Where they appear:**
+  - the iPhone's Videos tab (Movies, TV Shows, Home Videos, then recently added movies and shows) and the Mac sidebar's Videos section;
+  - Home: Continue Watching (with progress and time left) and Up Next (the next episode of each show you're watching), before Recently Played music and Recently Added movies, shows and music;
+  - Search: Movies, TV Shows, Episodes and Home Videos sections.
+
+**Telling movies, episodes and home videos apart** (`VideoNameParser`)
+- **Movies:** `Heat (1995).mkv`, release names (`The.Matrix.1999.1080p.BluRay.x264-GROUP`), or a `Heat (1995)` folder around the file. Titles containing years ("Blade Runner 2049", "1917", "2001 A Space Odyssey") keep them. Editions ("Director's Cut", Plex's `{edition-…}`) and `CD1`/`Part 2` are recognised.
+- **Episodes:** `S01E02`, two-episode files (`S01E02E03`, `S01E02-E03`, `S01E02-03`), `1x02`, "Season 1 Episode 2", `Show/Season 1/02 - Title`, `Specials` folders (season 0), and anime-style `[Group] Show - 05`.
+- **Home videos:** everything else, plus phone and camera names (`IMG_`, `VID_`, `PXL_`, `GOPR`, `DJI_`, dated names) even when they contain a year. A bare year, as in "Christmas 2019", only makes a movie when the video is feature length.
+- **Per folder:** Sources ▸ right-click (or long-press) ▸ Videos in This Folder: Decide from Names, Movies, TV Shows or Home Videos. The folder's videos are sorted again straight away.
+- **`.nfo` files** (as Kodi, Jellyfin, tinyMediaManager, Radarr and Sonarr write them) beside a video, or `tvshow.nfo` in a show's folder. Their details win over names and lookups. An `.nfo` that is only a link gives the IMDb or TMDB ID.
+- **Artwork beside the files:** `Name-poster.jpg`, `poster.jpg` or `folder.jpg` (only when the movie has the folder to itself), `fanart.jpg`, episode `Name-thumb.jpg`, show and season posters (`season01-poster.jpg`, or a season folder's own poster), and cover art inside MKV and MP4 files.
+
+**What's inside each file** (`VideoProbe`, reads headers only)
+- **MP4, MOV and M4V:** codec, picture size, frame rate, HDR10 or HLG, Dolby Vision, each audio track's codec and language, the real channel count of Dolby Digital (Plus) tracks and their Atmos flag, subtitle tracks, and the recording date and place phones and cameras store.
+- **Matroska and WebM:** the same, plus HDR10+, forced and SDH subtitle flags, chapters and cover attachments, including files whose track list comes after the video.
+- **AVI:** picture size, codec, frame rate, length and audio.
+- This is where running times (before a video has ever been played) and the badges come from.
+
+**TMDB** (Settings ▸ Metadata, with your own key)
+- **The key:** either TMDB credential works (the API key or the Read Access Token). It's checked when saved and kept in the Keychain.
+- **Lookups** run in the background after scans, a few items at a time:
+  - search by title and year (then without the year), and accept only a close title whose year is within one;
+  - fetch details with cast and your region's age rating, the poster and backdrop, season posters, and episode titles, synopses, air dates and stills for the episodes you have;
+  - IDs from `.nfo` files are used directly.
+- **Corrections:** Fix Match (search TMDB and pick the right film or show), Look Up Again, and Settings ▸ Look Up Unmatched Titles Again. Edits and `.nfo` details are never replaced.
+
+**Artwork for every video** (your addition)
+- Videos with no artwork at all get a frame from about a tenth of the way in, two at a time in the background once lookups are done: AVFoundation for MP4 and MOV, VLC's thumbnailer for everything else (`FrameGrabber` in PlaybackEngine).
+- A movie without a poster gets one made from that frame, with its title.
+- **Choose Artwork** in any video's or show's menu: scrub to any frame and choose Use This Frame, or pick an image from Files, Finder or Photos. Use Automatic Artwork goes back.
+
+**Watching**
+- **Progress rules:**
+  - videos resume where they stopped once past the first minute, with Play from Beginning beside Resume;
+  - from 92% on they count as watched;
+  - positions are saved every ten seconds, on pause and when something else starts (`WatchProgressTracker` and `ResumePolicy` in PlaybackCore).
+- **Episodes** play on into the following ones. At the end of the last video the player closes, as in the TV app.
+- **Subtitle files** beside a video (`Movie.srt`, `Movie.en.srt`, `.ass`, `.vtt`) are loaded with it.
+
+**The player in the same window** (your additions, Mac)
+- **Video and Now Playing open over the library** in the main window, instead of a separate window. F or the button toggles full screen. Esc, the back button or Playback ▸ Hide Player (⌥⌘P) returns to the library: video pauses, music plays on.
+- **Now Playing on the Mac:**
+  - the artwork beside the controls in wide windows, stacked in narrow ones;
+  - buttons kept clear of the window's own controls, with hover states;
+  - Up Next opens as a panel on the right;
+  - Space and Esc work.
+
+**Cover Flow** (your addition)
+- Albums, Movies and TV Shows have a Grid / Cover Flow switch in the toolbar.
+- Covers turn and stack as on the iPod, with reflections. Scroll, or use ← and →, then click the middle cover (or press Return) to open it.
+
+**Data model** (`LibrarySchemaV2`, upgraded in place as you chose)
+- **New models:** `Video` (a movie, an episode or a home video), `TVShow` and `Season`.
+- **New fields:** `MediaFile` gains the video details, `Source` what its videos are, and `PlaybackRecord` watched state and running time.
+- **The upgrade:** `LibrarySchemaV1` is now a frozen copy of Milestone 3's models, and `LibraryMigrationPlan` upgrades it to version 2 in place. Videos already in the library are read again on the first scan.
+- **Who writes what:** videos, shows and seasons are only written by the scanner's context, one job at a time (scans, removals, lookups, frames). Play history is only written by the main context. So the two never collide.
+
+### How it was checked
+- **Linux:** 127 Swift Testing tests pass. New ones cover:
+  - 45 video names (movies, episodes, home videos, folders and hints);
+  - MP4 with Dolby Vision and Atmos, Matroska (including tracks after the media), AVI and camera dates, on files built byte by byte;
+  - `.nfo` files, TMDB requests and responses, and matching;
+  - the resume and watched rules.
+- **Mac, through `Tools/build-check.sh` with Xcode 26.4.1:**
+  - the Mac and iOS Simulator builds have no warnings;
+  - all 139 tests pass;
+  - **the upgrade is tested on a real Milestone 3 library.** Before any model changed, the Mac wrote a small library with the Milestone 3 code: a source, a song with an edited title, seven plays and a rating, and a video with a resume position. The test checks that the frozen copy matches that store exactly, then upgrades it and finds every value still there;
+  - 3 new scanning tests: movies, a show with seasons, `tvshow.nfo` and posters, home videos; Edit Info surviving a folder being marked Home Videos; choosing and resetting artwork.
+- **Not yet tested:**
+  - a real video library and real TMDB lookups (there's no key yet);
+  - VLC frames from real MKV files;
+  - the new Mac layouts and Cover Flow, by eye;
+  - anything on iPhone or iPad.
+
+### Stubbed or deferred
+- **Scrub previews** (your YouTube-style request) come in Milestone 5; the frame grabber they need is built.
+- **Merging shows.** Two folders with different names that TMDB matches to the same show stay two shows.
+- **Versions.** Two files of the same movie (1080p and 4K, say) appear as two movies, each with its badges.
+- **Places.** Home video locations are read but not shown on a map yet.
+- **TMDB options.** Lookups use the device's language; there's no choice of artwork language and no collections yet.
+- **Player polish** (Picture in Picture, AirPlay details, the full info panel) is Milestone 5.
+
+### Where this deviates from the build prompt, and why
+1. **Movies, episodes and home videos share one `Video` model with a kind**, instead of separate Movie, Episode and HomeVideo models. They share almost every field, and Continue Watching, search and the player treat them alike. `TVShow` and `Season` are separate, as planned.
+2. **Watched state and positions stay in `PlaybackRecord`**, by content fingerprint, not on the video. They survive rescans and moved files, only the main context writes them, and they can sync on their own later.
+3. **Video details come from Coreplay's own container reader**, not VLC's parser or AVFoundation. It runs during scans without starting libVLC, reads MKV (which AVFoundation can't open), and is tested on any platform.
+4. **A bare year only makes a movie when the video is long enough** (brackets or release-style names always do). Otherwise home videos such as "Christmas 2019" would be looked up as films.
+5. **The separate Mac video window is gone**, replaced by the in-window player you asked for. The prompt's floating-on-top and multiple player windows can return in Milestone 5 as options.
+6. **Cover Flow and choosing artwork weren't in the plan.** They're your additions.
 
 ---
 

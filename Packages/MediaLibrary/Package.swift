@@ -24,7 +24,13 @@ let package = Package(
         ),
         .testTarget(
             name: "MediaLibraryTests",
-            dependencies: ["MediaLibrary", "MetadataProviders"]
+            dependencies: [
+                "MediaLibrary",
+                "MetadataProviders",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+            ],
+            // A library written by Milestone 3, for the upgrade tests.
+            resources: [.copy("Fixtures/LibraryV1")]
         ),
     ]
 )

@@ -18,13 +18,20 @@ public enum ArtworkDecoder {
         }.value
     }
 
+    /// Decodes a file, or downloads and decodes a web image (cast photos).
     public static func decode(contentsOf url: URL, maxPixelSize: Int) async -> DecodedImage? {
         if let cached = cachedImage(contentsOf: url, maxPixelSize: maxPixelSize) {
             return cached
         }
-        let decoded = await Task.detached(priority: .userInitiated) {
-            decodeFileSynchronously(url, maxPixelSize: maxPixelSize)
-        }.value
+        let decoded: DecodedImage?
+        if url.isFileURL {
+            decoded = await Task.detached(priority: .userInitiated) {
+                decodeFileSynchronously(url, maxPixelSize: maxPixelSize)
+            }.value
+        } else {
+            guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+            decoded = await decode(data, maxPixelSize: maxPixelSize)
+        }
         if let decoded {
             ArtworkImageCache.shared.insert(decoded, for: cacheKey(url, maxPixelSize))
         }
@@ -275,5 +282,46 @@ public struct ArtworkBackground: View {
             [0, 0.5 - edge], [0.5 + dx, 0.5 + dy], [1, 0.5 + edge],
             [0, 1], [0.5 - edge, 1], [1, 1],
         ]
+    }
+}
+
+/// Artwork that fills whatever frame it's given (cropping as needed), with
+/// no shape of its own: backdrops and full-bleed backgrounds.
+public struct FilledArtwork: View {
+    private let url: URL?
+    private let maxPixelSize: Int
+    @State private var image: DecodedImage?
+    @State private var shownURL: URL?
+
+    public init(url: URL?, maxPixelSize: Int = 1_600) {
+        self.url = url
+        self.maxPixelSize = maxPixelSize
+    }
+
+    public var body: some View {
+        let displayed = shownURL == url ? image : url.flatMap { ArtworkDecoder.cachedImage(contentsOf: $0, maxPixelSize: maxPixelSize) }
+        Color.clear
+            .overlay {
+                if let displayed {
+                    Image(decorative: displayed.cgImage, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .transition(.opacity)
+                }
+            }
+            .clipped()
+            .task(id: url) {
+                guard let url else {
+                    image = nil
+                    shownURL = nil
+                    return
+                }
+                let decoded = await ArtworkDecoder.decode(contentsOf: url, maxPixelSize: maxPixelSize)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    image = decoded
+                }
+                shownURL = url
+            }
     }
 }

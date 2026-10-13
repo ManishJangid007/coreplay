@@ -13,3 +13,7 @@ Packages/*/Package.resolved
 
 # macOS
 .DS_Store
+
+# SQLite side files next to test fixtures
+*.store-shm
+*.store-wal

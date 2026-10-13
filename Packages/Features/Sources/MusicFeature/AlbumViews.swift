@@ -23,13 +23,17 @@ public struct AlbumsView: View {
     }
 
     @AppStorage("albums.sort") private var sortRaw = Sort.title.rawValue
+    @AppStorage("albums.layout") private var layoutRaw = LibraryLayout.grid.rawValue
 
     public init() {}
 
     public var body: some View {
-        AlbumsQueryView(sort: Sort(rawValue: sortRaw) ?? .title)
+        AlbumsQueryView(sort: Sort(rawValue: sortRaw) ?? .title, layout: LibraryLayout(rawValue: layoutRaw) ?? .grid)
             .navigationTitle("Albums")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    LibraryLayoutPicker(layout: $layoutRaw)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Picker("Sort By", selection: $sortRaw) {
@@ -46,9 +50,13 @@ public struct AlbumsView: View {
 }
 
 private struct AlbumsQueryView: View {
+    @Environment(LibraryManager.self) private var library
     @Query private var albums: [Album]
+    @State private var opened: Album?
+    let layout: LibraryLayout
 
-    init(sort: AlbumsView.Sort) {
+    init(sort: AlbumsView.Sort, layout: LibraryLayout) {
+        self.layout = layout
         switch sort {
         case .title:
             _albums = Query(sort: [SortDescriptor(\Album.sortTitle)])
@@ -62,13 +70,30 @@ private struct AlbumsQueryView: View {
     }
 
     var body: some View {
-        if albums.isEmpty {
-            MusicEmptyState()
-        } else {
-            ScrollView {
-                AlbumGrid(albums: albums)
-                    .padding(Metrics.contentPadding)
+        Group {
+            if albums.isEmpty {
+                MusicEmptyState()
+            } else if layout == .coverFlow {
+                CoverFlowView(albums, title: \.title, subtitle: { $0.artistName }, onOpen: { opened = $0 }) { album in
+                    FilledArtwork(url: library.artworkURL(album.artworkKey, .large), maxPixelSize: 800)
+                        .background {
+                            LinearGradient(colors: [Color(white: 0.3), Color(white: 0.15)], startPoint: .top, endPoint: .bottom)
+                                .overlay {
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 48))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                }
+                        }
+                }
+            } else {
+                ScrollView {
+                    AlbumGrid(albums: albums)
+                        .padding(Metrics.contentPadding)
+                }
             }
+        }
+        .navigationDestination(item: $opened) { album in
+            AlbumDetailView(album: album)
         }
     }
 }
