@@ -55,9 +55,12 @@ Packages/
                       remote commands, audio session
   DesignSystem/       Palette, metrics, motion, artwork views, artwork-derived
                       backgrounds, scrubber and transport controls
-  Features/           HomeFeature, LibraryFeature, SearchFeature, PlayerFeature, SettingsFeature
-  MediaLibrary/       Placeholder (Milestones 3–4)
-  MetadataProviders/  Placeholder (Milestones 3–4, 8)
+  Features/           HomeFeature, MusicFeature, LibraryFeature (Sources, Videos),
+                      SearchFeature, PlayerFeature, SettingsFeature
+  MediaLibrary/       SwiftData model, sources and bookmarks, the scanner,
+                      artwork cache, play counts, Edit Info
+  MetadataProviders/  Embedded tag reader (ID3, FLAC/Ogg, MP4, APE, WAV/AIFF),
+                      file-name fallbacks, name keys. Online lookups come later.
   Networking/         Placeholder (Milestone 7)
 ```
 
@@ -69,6 +72,35 @@ The packages are referenced by folder (the **Packages** group), so Xcode treats
 them as part of the project: you can edit them, see their warnings and run their
 tests. Don't re-add them with **Add Package Dependencies ▸ Add Local**, which makes
 Xcode treat them as outside dependencies with hidden warnings and no tests.
+
+## How the library works
+
+```
+ Sources (folders, "On My iPhone", ~/Music)  ──▶  LibraryIndexer (background SwiftData context)
+                                                    │  TagReader + PathMetadata per new or changed file
+                                                    │  ArtworkStore: thumbnail, grid and large JPEGs
+                                                    ▼
+                         Source · MediaFile · Track · Album · Artist · Genre · PlaybackRecord
+                                                    │
+                     @Query in the Music, Home and Search screens · LibraryManager for everything else
+```
+
+- **Sources** are folders the user picks (kept as security-scoped bookmarks),
+  the app's own Documents folder on iPhone and iPad, and the Music and Movies
+  folders on the Mac. A source's folder stays accessible while the app runs.
+- **Scans are incremental.** Files are matched by path; only new files and
+  files whose size or modification date changed are read. Files that disappear
+  are marked unavailable, not deleted. Scans run when the app starts, when it
+  returns to the foreground on iOS (at most every five minutes), on pull to
+  refresh, and on the Mac whenever FSEvents reports a change.
+- **Metadata** comes from embedded tags first, then folder and file names
+  (`Artist/Album (Year)/01 Title.flac` and friends). Artwork comes from the
+  file, then `cover.jpg`, `folder.jpg` and similar in the same folder.
+- **Grouping** follows Music: albums by album artist and title, compilations
+  under Various Artists, "The" ignored when sorting.
+- **Edit Info** changes are remembered per field and never overwritten by a rescan.
+- **Play counts** use a content fingerprint, so history survives moving a file.
+  A song counts as played after it has played for half its length or four minutes.
 
 ## How playback works
 

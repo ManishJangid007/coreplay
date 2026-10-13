@@ -1,0 +1,362 @@
+import Foundation
+import MetadataProviders
+import PlaybackCore
+import SwiftData
+
+public struct ScanProgress: Sendable, Equatable {
+    public var sourceID: UUID
+    /// Files read so far (unchanged files are skipped and don't count).
+    public var processed: Int
+    /// Files that need reading in this scan.
+    public var total: Int
+}
+
+public struct ScanSummary: Sendable, Equatable {
+    public var added = 0
+    public var updated = 0
+    public var unchanged = 0
+    /// Files that disappeared and are now marked unavailable.
+    public var missing = 0
+
+    public init() {}
+}
+
+/// A media file found on disk.
+struct FoundFile: Sendable {
+    var url: URL
+    /// Below the source root; "" for single-file sources.
+    var relativePath: String
+    var size: Int64
+    var modificationDate: Date
+    var kind: PlaybackItem.Kind
+}
+
+/// What reading a file produced, ready to merge into the model.
+struct ParsedFile: Sendable {
+    var found: FoundFile
+    var contentKey: String
+    var tags: AudioTags?
+    var artworkKey: String?
+    var path: PathMetadata
+}
+
+/// Fields Edit Info can change. Rescans leave edited fields alone.
+public enum TrackField: String, Sendable, CaseIterable {
+    case title, artist, album, albumArtist, genre, year, trackNumber, discNumber, composer, compilation
+}
+
+/// Scans sources into the library on a background model context.
+///
+/// Scans are incremental: a file whose size and modification date haven't
+/// changed is never read again. Files that vanish are marked unavailable
+/// rather than deleted, so their history survives an unplugged drive.
+@ModelActor
+public actor LibraryIndexer {
+    static let skippedExtensions: Set<String> = ["m3u8", "m3u", "pls", "xspf", "cue"]
+    private static let batchSize = 16
+    private static let saveInterval = 128
+
+    public func scan(
+        sourceID: UUID,
+        root: URL,
+        isSingleFile: Bool,
+        artworkStore: ArtworkStore,
+        progress: @escaping @Sendable (ScanProgress) -> Void
+    ) async throws -> ScanSummary {
+        guard let source = try source(id: sourceID) else { return ScanSummary() }
+        let found = isSingleFile ? Self.singleFile(root) : Self.enumerate(root)
+
+        var summary = ScanSummary()
+        var existing: [String: MediaFile] = [:]
+        for file in source.files {
+            existing[file.relativePath] = file
+        }
+
+        var pending: [FoundFile] = []
+        for file in found {
+            if let current = existing[file.relativePath],
+               current.fileSize == file.size,
+               abs(current.modificationDate.timeIntervalSince(file.modificationDate)) < 0.001,
+               current.kind == file.kind {
+                if !current.isAvailable {
+                    current.isAvailable = true
+                }
+                summary.unchanged += 1
+            } else {
+                pending.append(file)
+            }
+        }
+        let foundPaths = Set(found.map(\.relativePath))
+        for (path, file) in existing where !foundPaths.contains(path) && file.isAvailable {
+            file.isAvailable = false
+            summary.missing += 1
+        }
+        try modelContext.save()
+
+        let grouper = LibraryGrouper(context: modelContext)
+        let folderArtwork = FolderArtworkCache()
+        progress(ScanProgress(sourceID: sourceID, processed: 0, total: pending.count))
+
+        var index = 0
+        var sinceSave = 0
+        while index < pending.count {
+            try Task.checkCancellation()
+            let batch = Array(pending[index..<min(index + Self.batchSize, pending.count)])
+            index += batch.count
+            let parsed = await withTaskGroup(of: ParsedFile.self) { group in
+                for file in batch {
+                    group.addTask {
+                        Self.parse(file, artworkStore: artworkStore, folderArtwork: folderArtwork)
+                    }
+                }
+                var results: [ParsedFile] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results
+            }
+            for item in parsed.sorted(by: { $0.found.relativePath < $1.found.relativePath }) {
+                if existing[item.found.relativePath] == nil {
+                    summary.added += 1
+                } else {
+                    summary.updated += 1
+                }
+                upsert(item, source: source, existing: &existing, grouper: grouper)
+            }
+            sinceSave += batch.count
+            if sinceSave >= Self.saveInterval || index >= pending.count {
+                try modelContext.save()
+                sinceSave = 0
+            }
+            progress(ScanProgress(sourceID: sourceID, processed: index, total: pending.count))
+        }
+
+        if summary.updated > 0 {
+            try grouper.removeOrphans()
+        }
+        source.isAvailable = true
+        source.lastScanDate = .now
+        source.audioFileCount = source.files.count { $0.kindRaw == PlaybackItem.Kind.audio.rawValue }
+        source.videoFileCount = source.files.count { $0.kindRaw == PlaybackItem.Kind.video.rawValue }
+        try modelContext.save()
+        return summary
+    }
+
+    /// The source's folder can't be reached (drive unplugged, bookmark broken).
+    public func markUnavailable(sourceID: UUID) throws {
+        guard let source = try source(id: sourceID) else { return }
+        source.isAvailable = false
+        for file in source.files where file.isAvailable {
+            file.isAvailable = false
+        }
+        try modelContext.save()
+    }
+
+    /// Removes a source and everything found in it. Play history (kept by
+    /// content fingerprint) stays, so re-adding the folder restores it.
+    public func removeSource(id: UUID) throws {
+        guard let source = try source(id: id) else { return }
+        modelContext.delete(source)
+        try modelContext.save()
+        try LibraryGrouper(context: modelContext).removeOrphans()
+    }
+
+    /// Artwork keys that tracks, albums or artists still use.
+    public func artworkKeysInUse() throws -> Set<String> {
+        var keys = Set<String>()
+        for track in try modelContext.fetch(FetchDescriptor<Track>()) {
+            if let key = track.artworkKey { keys.insert(key) }
+        }
+        for album in try modelContext.fetch(FetchDescriptor<Album>()) {
+            if let key = album.artworkKey { keys.insert(key) }
+        }
+        return keys
+    }
+
+    // MARK: - Merging
+
+    private func source(id: UUID) throws -> Source? {
+        var descriptor = FetchDescriptor<Source>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
+    }
+
+    private func upsert(_ parsed: ParsedFile, source: Source, existing: inout [String: MediaFile], grouper: LibraryGrouper) {
+        let found = parsed.found
+        let file: MediaFile
+        if let current = existing[found.relativePath] {
+            file = current
+        } else {
+            file = MediaFile()
+            modelContext.insert(file)
+            file.source = source
+            file.relativePath = found.relativePath
+            existing[found.relativePath] = file
+        }
+        file.fileName = found.url.lastPathComponent
+        file.fileExtension = found.url.pathExtension.lowercased()
+        file.kindRaw = found.kind.rawValue
+        file.fileSize = found.size
+        file.modificationDate = found.modificationDate
+        file.contentKey = parsed.contentKey
+        file.isAvailable = true
+        if let duration = parsed.tags?.duration, duration > 0 {
+            file.duration = duration
+        }
+        if let format = parsed.tags?.format {
+            file.codec = format.codec
+            file.sampleRate = format.sampleRate
+            file.bitsPerSample = format.bitsPerSample
+            file.channels = format.channels
+            file.bitRate = format.bitRate
+            file.isLossless = format.isLossless
+        }
+
+        guard found.kind == .audio else {
+            if let track = file.track {
+                file.track = nil
+                modelContext.delete(track)
+            }
+            return
+        }
+        let track: Track
+        if let current = file.track {
+            track = current
+        } else {
+            track = Track()
+            modelContext.insert(track)
+            file.track = track
+        }
+        Self.apply(parsed, to: track)
+        grouper.attach(
+            track,
+            sortArtist: parsed.tags?.sortArtist,
+            sortAlbum: parsed.tags?.sortAlbum,
+            sortAlbumArtist: parsed.tags?.sortAlbumArtist
+        )
+    }
+
+    /// Tags first, then file and folder names; edited fields are left alone.
+    static func apply(_ parsed: ParsedFile, to track: Track) {
+        let tags = parsed.tags ?? AudioTags()
+        let path = parsed.path
+        let edited = Set(track.editedFields)
+        func unedited(_ field: TrackField) -> Bool { !edited.contains(field.rawValue) }
+
+        if unedited(.title) {
+            let title = tags.title ?? path.title
+            track.title = title
+            track.sortTitle = NameNormalizer.sortKey(tags.sortTitle ?? title)
+        }
+        let artist = tags.artist ?? tags.albumArtist ?? path.artist ?? LibraryGrouper.unknownArtist
+        if unedited(.artist) {
+            track.artistName = artist
+        }
+        if unedited(.album) {
+            track.albumTitle = tags.album ?? path.album ?? LibraryGrouper.unknownAlbum
+        }
+        if unedited(.albumArtist) {
+            track.albumArtistName = tags.albumArtist ?? artist
+        }
+        if unedited(.compilation) {
+            track.isCompilation = tags.isCompilation
+                ?? (NameNormalizer.groupKey(tags.albumArtist ?? "") == NameNormalizer.groupKey(LibraryGrouper.variousArtists))
+        }
+        if unedited(.genre) {
+            track.genreName = tags.genre
+        }
+        if unedited(.year) {
+            track.year = tags.year ?? path.year
+        }
+        if unedited(.trackNumber) {
+            track.trackNumber = tags.trackNumber ?? path.trackNumber
+            track.trackCount = tags.trackCount
+        }
+        if unedited(.discNumber) {
+            track.discNumber = tags.discNumber ?? path.discNumber
+            track.discCount = tags.discCount
+        }
+        if unedited(.composer) {
+            track.composer = tags.composer
+        }
+        track.lyrics = tags.lyrics
+        if let duration = tags.duration, duration > 0 {
+            track.duration = duration
+        }
+        track.artworkKey = parsed.artworkKey
+    }
+
+    // MARK: - Reading files (off the actor)
+
+    private static let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+
+    static func enumerate(_ root: URL) -> [FoundFile] {
+        let base = root.resolvingSymlinksInPath().standardizedFileURL
+        let baseComponents = base.pathComponents
+        guard let enumerator = FileManager.default.enumerator(
+            at: base,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        var found: [FoundFile] = []
+        while let url = enumerator.nextObject() as? URL {
+            if let file = Self.found(url, relativeTo: baseComponents) {
+                found.append(file)
+            }
+        }
+        return found
+    }
+
+    static func singleFile(_ url: URL) -> [FoundFile] {
+        Self.found(url, relativeTo: nil).map { [$0] } ?? []
+    }
+
+    static func found(_ url: URL, relativeTo baseComponents: [String]?) -> FoundFile? {
+        let ext = url.pathExtension.lowercased()
+        guard !skippedExtensions.contains(ext) else { return nil }
+        let kind = ContainerFormat(fileExtension: ext).kindHint
+        guard kind == .audio || kind == .video,
+              let values = try? url.resourceValues(forKeys: resourceKeys),
+              values.isRegularFile == true else { return nil }
+        var relativePath = ""
+        if let baseComponents {
+            let components = url.standardizedFileURL.pathComponents
+            guard components.count > baseComponents.count,
+                  Array(components.prefix(baseComponents.count)) == baseComponents else { return nil }
+            relativePath = components.dropFirst(baseComponents.count).joined(separator: "/")
+        }
+        return FoundFile(
+            url: url,
+            relativePath: relativePath,
+            size: Int64(values.fileSize ?? 0),
+            modificationDate: values.contentModificationDate ?? .distantPast,
+            kind: kind
+        )
+    }
+
+    static func parse(_ file: FoundFile, artworkStore: ArtworkStore, folderArtwork: FolderArtworkCache) -> ParsedFile {
+        var tags: AudioTags?
+        var contentKey = ""
+        if let source = try? FileByteSource(url: file.url) {
+            contentKey = (try? ContentKey.compute(source)) ?? ""
+            if file.kind == .audio {
+                tags = try? TagReader.read(source)
+            }
+        }
+        if contentKey.isEmpty {
+            contentKey = "path:\(file.relativePath)#\(file.size)"
+        }
+        var artworkKey: String?
+        if file.kind == .audio {
+            if let data = tags?.artwork?.data {
+                artworkKey = artworkStore.store(data)
+            }
+            if artworkKey == nil {
+                artworkKey = folderArtwork.key(forDirectory: file.url.deletingLastPathComponent(), store: artworkStore)
+            }
+            tags?.artwork = nil
+        }
+        let name = file.relativePath.isEmpty ? file.url.lastPathComponent : file.relativePath
+        return ParsedFile(found: file, contentKey: contentKey, tags: tags, artworkKey: artworkKey, path: PathMetadata(relativePath: name))
+    }
+}

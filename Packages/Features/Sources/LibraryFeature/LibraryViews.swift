@@ -1,9 +1,9 @@
 import DesignSystem
+import MediaLibrary
+import MusicFeature
 import SwiftUI
 
-/// Library sections. Each shows a proper empty state until the library and
-/// scanner arrive (Music in Milestone 3, Movies and TV in Milestone 4,
-/// Sources in Milestones 3 and 7).
+/// Library sections, for the Mac sidebar and the iPhone tabs.
 public enum LibrarySection: String, Hashable, CaseIterable, Identifiable, Sendable {
     case artists, albums, songs, genres, composers, playlists
     case movies, tvShows, homeVideos
@@ -41,30 +41,28 @@ public enum LibrarySection: String, Hashable, CaseIterable, Identifiable, Sendab
         }
     }
 
-    public static let music: [LibrarySection] = [.artists, .albums, .songs, .genres, .composers, .playlists]
+    /// Composers join these with playlists in Milestone 8.
+    public static let music: [LibrarySection] = [.artists, .albums, .songs, .genres, .playlists]
     public static let videos: [LibrarySection] = [.movies, .tvShows, .homeVideos]
 
-    fileprivate var emptyMessage: String {
+    fileprivate var comingSoonMessage: String {
         switch self {
-        case .artists, .albums, .songs, .genres, .composers:
-            "Music from the folders you add in Sources will appear here, with artwork from your files."
         case .playlists:
-            "Playlists you create, smart playlists and imported M3U or XSPF files will appear here."
+            "Playlists you make, smart playlists and imported M3U or XSPF files will appear here."
+        case .composers:
+            "Composers from your files\u{2019} tags will appear here."
         case .movies:
-            "Movies from your folders will appear here with posters, cast and synopsis."
+            "Movies with posters, cast and synopsis arrive in the next update. Until then, your videos are in Home Videos."
         case .tvShows:
-            "TV shows will appear here grouped by season, with episode stills and watched state."
-        case .homeVideos:
-            "Other videos will appear here by date, with generated thumbnails."
-        case .sources:
-            "Add folders, drives and network shares to build your library. Until then, open files directly."
+            "TV shows grouped by season, with episode stills and watched state, arrive in the next update. Until then, your videos are in Home Videos."
+        default:
+            ""
         }
     }
 }
 
 /// A single library section.
 public struct LibrarySectionView: View {
-    @Environment(\.appActions) private var actions
     private let section: LibrarySection
 
     public init(section: LibrarySection) {
@@ -72,18 +70,31 @@ public struct LibrarySectionView: View {
     }
 
     public var body: some View {
-        EmptyStateView(
-            "No \(section.title) Yet",
-            systemImage: section.systemImage,
-            message: section.emptyMessage,
-            actionTitle: "Open Files\u{2026}",
-            action: { actions.openFiles() }
-        )
-        .navigationTitle(section.title)
+        switch section {
+        case .artists:
+            MusicCategoryView(category: .artists)
+        case .albums:
+            MusicCategoryView(category: .albums)
+        case .songs:
+            MusicCategoryView(category: .songs)
+        case .genres:
+            MusicCategoryView(category: .genres)
+        case .homeVideos:
+            VideosView()
+        case .sources:
+            SourcesView()
+        case .composers, .playlists, .movies, .tvShows:
+            EmptyStateView(
+                "Coming Soon",
+                systemImage: section.systemImage,
+                message: section.comingSoonMessage
+            )
+            .navigationTitle(section.title)
+        }
     }
 }
 
-/// A list of sections, used for the Music, Videos and Library tabs on iPhone.
+/// A list of sections, used for the Videos and Library tabs on iPhone.
 public struct LibraryIndexView: View {
     private let title: String
     private let sections: [LibrarySection]

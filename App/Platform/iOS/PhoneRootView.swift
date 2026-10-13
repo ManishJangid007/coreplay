@@ -2,6 +2,8 @@
 import DesignSystem
 import HomeFeature
 import LibraryFeature
+import MediaLibrary
+import MusicFeature
 import NowPlaying
 import PlaybackEngine
 import PlayerFeature
@@ -19,6 +21,7 @@ struct PhoneRootView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var playerTransition
     @State private var selectedTab: AppTab = .home
 
@@ -26,25 +29,38 @@ struct PhoneRootView: View {
         @Bindable var model = model
         TabView(selection: $selectedTab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
-                NavigationStack { HomeView() }
+                NavigationStack {
+                    HomeView()
+                        .musicDestinations()
+                }
             }
             Tab("Music", systemImage: "music.note", value: AppTab.music) {
                 NavigationStack {
-                    LibraryIndexView(title: "Music", sections: LibrarySection.music)
+                    MusicLibraryView(extraRows: [
+                        .init("Playlists", systemImage: "music.note.list") {
+                            LibrarySectionView(section: .playlists)
+                        },
+                    ])
+                    .musicDestinations()
                 }
             }
             Tab("Videos", systemImage: "play.rectangle.on.rectangle", value: AppTab.videos) {
                 NavigationStack {
                     LibraryIndexView(title: "Videos", sections: LibrarySection.videos)
+                        .musicDestinations()
                 }
             }
             Tab("Library", systemImage: "square.stack", value: AppTab.library) {
                 NavigationStack {
                     LibraryIndexView(title: "Library", sections: [.sources, .playlists])
+                        .musicDestinations()
                 }
             }
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack { SearchView() }
+                NavigationStack {
+                    SearchView()
+                        .musicDestinations()
+                }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -76,11 +92,16 @@ struct PhoneRootView: View {
         }
         .fileImporter(
             isPresented: $model.isFileImporterPresented,
-            // Any file: if VLC can play it, Coreplay should. AppModel.open filters obvious non-media.
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: true
+            // Files: anything (if VLC can play it, Coreplay should; AppModel.open
+            // filters obvious non-media). Folders: added to the library.
+            allowedContentTypes: model.importMode == .folder ? [.folder] : [.data],
+            allowsMultipleSelection: model.importMode == .files
         ) { result in
             guard case .success(let urls) = result else { return }
+            if model.importMode == .folder {
+                model.addSources(urls)
+                return
+            }
             // Let the picker finish dismissing before the player is presented.
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(350))
@@ -98,15 +119,24 @@ struct PhoneRootView: View {
         .onChange(of: keepsScreenAwake) { _, keepAwake in
             UIApplication.shared.isIdleTimerDisabled = keepAwake
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                model.library.refreshIfStale()
+            }
+        }
+        .task {
+            model.startLibrary()
+        }
         .environment(\.appActions, actions)
     }
 
     private var actions: AppActions {
         let model = model
         return AppActions(
-            openFiles: { model.isFileImporterPresented = true },
+            openFiles: { model.presentFileImporter() },
             openSettings: { model.isSettingsPresented = true },
-            showPlayer: { model.presentPlayer() }
+            showPlayer: { model.presentPlayer() },
+            addLibraryFolder: { model.addLibraryFolder() }
         )
     }
 

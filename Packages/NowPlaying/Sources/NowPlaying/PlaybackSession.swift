@@ -55,10 +55,21 @@ public final class PlaybackSession {
     // MARK: - Starting playback
 
     /// Replaces the queue with `items` and plays from `index`.
-    public func play(_ items: [PlaybackItem], startingAt index: Int = 0) async {
+    /// - Parameter shuffled: Turns shuffle on or off first (Apple Music's Play
+    ///   and Shuffle buttons); `nil` keeps the current setting, as tapping a song does.
+    public func play(_ items: [PlaybackItem], startingAt index: Int = 0, shuffled: Bool? = nil) async {
         guard !items.isEmpty else { return }
+        if let shuffled {
+            queue.setShuffle(shuffled)
+        }
         queue.replace(with: items, startingAt: index)
         await loadCurrent()
+    }
+
+    /// Shuffle: starts with a random item and shuffles the rest.
+    public func playShuffled(_ items: [PlaybackItem]) async {
+        guard !items.isEmpty else { return }
+        await play(items, startingAt: Int.random(in: items.indices), shuffled: true)
     }
 
     public func play(_ item: PlaybackItem) async {

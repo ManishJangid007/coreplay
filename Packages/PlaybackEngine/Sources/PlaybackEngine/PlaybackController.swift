@@ -63,12 +63,20 @@ public final class PlaybackController {
         return currentItem?.kind == .video
     }
 
+    /// Library items show the library's title and artist (which the user may
+    /// have edited); anything else prefers what the engine read from the file.
     public var displayTitle: String {
-        metadata.title ?? currentItem?.title ?? ""
+        if let item = currentItem, item.libraryID != nil {
+            return item.title
+        }
+        return metadata.title ?? currentItem?.title ?? ""
     }
 
     public var displaySubtitle: String? {
-        metadata.artist ?? currentItem?.artist
+        if let item = currentItem, item.libraryID != nil {
+            return item.artist
+        }
+        return metadata.artist ?? currentItem?.artist
     }
 
     public var configuration: EngineConfiguration {
@@ -99,6 +107,9 @@ public final class PlaybackController {
     @ObservationIgnored private var pendingTrackRestore: TrackRestore?
     @ObservationIgnored private var addedSubtitleURLs: [URL] = []
     @ObservationIgnored private var securityScopedURLs: [URL] = []
+    /// Artwork the library supplied with the item (`PlaybackItem.artworkURL`),
+    /// which wins over artwork the engine finds in the file.
+    @ObservationIgnored private var itemArtwork: Data?
     /// Containers currently showing a `VideoSurface`, newest last (see VideoSurface.swift).
     @ObservationIgnored var videoContainers: [WeakVideoContainer] = []
 
@@ -140,8 +151,13 @@ public final class PlaybackController {
         hasPlayedCurrentItem = false
         didFallBackToVLC = false
         addedSubtitleURLs = []
+        itemArtwork = nil
+        if item.libraryID != nil {
+            metadata = MediaMetadata(title: item.title, artist: item.artist, albumTitle: item.albumTitle)
+        }
         setState(.opening)
         notify(.item)
+        loadItemArtwork(for: item)
 
         let decision: EngineRouter.Decision
         if let quick = router.quickDecision(for: item) {
@@ -490,7 +506,14 @@ public final class PlaybackController {
             videoDimensions = dimensions
         case .metadataChanged(let newMetadata):
             var merged = newMetadata
-            if merged.artworkData == nil {
+            if let item = currentItem, item.libraryID != nil {
+                merged.title = item.title
+                merged.artist = item.artist
+                merged.albumTitle = item.albumTitle ?? merged.albumTitle
+            }
+            if let itemArtwork {
+                merged.artworkData = itemArtwork
+            } else if merged.artworkData == nil {
                 merged.artworkData = metadata.artworkData
             }
             metadata = merged
@@ -557,6 +580,23 @@ public final class PlaybackController {
 
     private func notify(_ change: Change) {
         onChange?(change)
+    }
+
+    // MARK: - Item artwork
+
+    /// Reads the artwork file the library pointed at, off the main actor.
+    private func loadItemArtwork(for item: PlaybackItem) {
+        guard let url = item.artworkURL, url.isFileURL else { return }
+        Task { [weak self] in
+            let data = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: url, options: .mappedIfSafe)
+            }.value
+            // Hand-offs bump the generation but keep the item, so compare items.
+            guard let self, let data, self.currentItem?.id == item.id else { return }
+            self.itemArtwork = data
+            self.metadata.artworkData = data
+            self.notify(.metadata)
+        }
     }
 
     // MARK: - Security-scoped access

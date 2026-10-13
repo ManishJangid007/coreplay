@@ -2,13 +2,15 @@
 import PackageDescription
 
 // One module per top-level feature. Features talk to playback only through
-// PlaybackSession / PlaybackController and never import VLCKit.
+// PlaybackSession / PlaybackController, to the library through
+// LibraryManager and SwiftData queries, and never import VLCKit.
 let package = Package(
     name: "Features",
     platforms: [.iOS(.v26), .macOS(.v26)],
     products: [
         .library(name: "HomeFeature", targets: ["HomeFeature"]),
         .library(name: "LibraryFeature", targets: ["LibraryFeature"]),
+        .library(name: "MusicFeature", targets: ["MusicFeature"]),
         .library(name: "SearchFeature", targets: ["SearchFeature"]),
         .library(name: "PlayerFeature", targets: ["PlayerFeature"]),
         .library(name: "SettingsFeature", targets: ["SettingsFeature"]),
@@ -17,12 +19,24 @@ let package = Package(
         .package(path: "../DesignSystem"),
         .package(path: "../PlaybackEngine"),
         .package(path: "../NowPlaying"),
+        .package(path: "../MediaLibrary"),
     ],
     targets: [
+        .target(
+            name: "MusicFeature",
+            dependencies: [
+                "DesignSystem",
+                "MediaLibrary",
+                "NowPlaying",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+            ]
+        ),
         .target(
             name: "HomeFeature",
             dependencies: [
                 "DesignSystem",
+                "MediaLibrary",
+                "MusicFeature",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
                 .product(name: "PlaybackEngine", package: "PlaybackEngine"),
                 "NowPlaying",
@@ -30,11 +44,22 @@ let package = Package(
         ),
         .target(
             name: "LibraryFeature",
-            dependencies: ["DesignSystem"]
+            dependencies: [
+                "DesignSystem",
+                "MediaLibrary",
+                "MusicFeature",
+                "NowPlaying",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+            ]
         ),
         .target(
             name: "SearchFeature",
-            dependencies: ["DesignSystem"]
+            dependencies: [
+                "DesignSystem",
+                "MediaLibrary",
+                "MusicFeature",
+                "NowPlaying",
+            ]
         ),
         .target(
             name: "PlayerFeature",

@@ -1,17 +1,28 @@
 import DesignSystem
+import MediaLibrary
+import MusicFeature
 import NowPlaying
 import PlaybackCore
 import PlaybackEngine
+import SwiftData
 import SwiftUI
 
 /// Home: Apple TV's "Watch Now" plus Apple Music's "Listen Now".
 ///
-/// Until the library exists (Milestones 3–4) it shows what's playing and an
-/// invitation to open files. Continue Watching, Up Next, Recently Added and
-/// the generated rows plug in here once there's data.
+/// What's playing, then Recently Played and Recently Added music. Continue
+/// Watching and Up Next for TV join in Milestone 4.
 public struct HomeView: View {
     @Environment(PlaybackSession.self) private var session
+    @Environment(LibraryManager.self) private var library
     @Environment(\.appActions) private var actions
+    @Query(HomeView.recentlyAdded) private var recentlyAdded: [Album]
+    @State private var recentlyPlayed: [Album] = []
+
+    private static var recentlyAdded: FetchDescriptor<Album> {
+        var descriptor = FetchDescriptor<Album>(sortBy: [SortDescriptor(\Album.dateAdded, order: .reverse)])
+        descriptor.fetchLimit = 16
+        return descriptor
+    }
 
     public init() {}
 
@@ -23,13 +34,24 @@ public struct HomeView: View {
                         actions.showPlayer()
                     }
                 }
-                welcome
+                if !recentlyPlayed.isEmpty {
+                    AlbumShelf(title: "Recently Played", albums: recentlyPlayed)
+                }
+                if !recentlyAdded.isEmpty {
+                    AlbumShelf(title: "Recently Added", albums: recentlyAdded)
+                }
+                if recentlyAdded.isEmpty {
+                    welcome
+                }
             }
             .padding(Metrics.contentPadding)
             .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
         .navigationTitle("Home")
+        .task(id: library.revision) {
+            recentlyPlayed = library.recentlyPlayedAlbums()
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -69,24 +91,59 @@ public struct HomeView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 Button {
-                    actions.openFiles()
+                    actions.addLibraryFolder()
                 } label: {
-                    Label("Open Files\u{2026}", systemImage: "folder")
+                    Label("Add Folder\u{2026}", systemImage: "folder.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
-                #if os(macOS)
-                Text("or drop files onto this window")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                #endif
+                Button {
+                    actions.openFiles()
+                } label: {
+                    Label("Open Files\u{2026}", systemImage: "doc")
+                }
+                .buttonStyle(.bordered)
             }
-            Text("Your library, with artwork and Continue Watching, arrives once folders can be added in Sources.")
+            Text(addFolderHint)
                 .font(.footnote)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private let addFolderHint: String = {
+    #if os(macOS)
+    return "Add a folder to build your library, or drop files onto this window to play them straight away."
+    #else
+    return "Add a folder to build your library, or open single files to play them straight away. Files you put in Coreplay\u{2019}s folder in the Files app appear automatically."
+    #endif
+}()
+
+/// A horizontal row of albums, as on Music's Home.
+private struct AlbumShelf: View {
+    let title: String
+    let albums: [Album]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.title2.bold())
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 16) {
+                    ForEach(albums) { album in
+                        NavigationLink(value: album) {
+                            AlbumCell(album: album)
+                                .frame(width: 160)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+        }
     }
 }
 

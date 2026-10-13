@@ -1,4 +1,5 @@
 import Foundation
+import MediaLibrary
 import NowPlaying
 import Observation
 import PlaybackCore
@@ -9,15 +10,22 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
-/// App-wide state: settings, the playback session, and what's presented.
+/// App-wide state: settings, the playback session, the library, and what's presented.
 @MainActor
 @Observable
 final class AppModel {
+    enum ImportMode {
+        case files
+        case folder
+    }
+
     let settings: AppSettings
     let session: PlaybackSession
+    let library: LibraryManager
 
-    /// iOS: the Files picker.
+    /// iOS: the Files picker, for files to play or a folder to add.
     var isFileImporterPresented = false
+    var importMode: ImportMode = .files
     /// iOS: the full-screen player.
     var isPlayerPresented = false
     /// iOS: the Settings sheet.
@@ -34,13 +42,78 @@ final class AppModel {
     @ObservationIgnored var openVideoWindow: (() -> Void)?
     #endif
 
+    @ObservationIgnored private var listeningTask: Task<Void, Never>?
+
     init() {
         let settings = AppSettings()
         self.settings = settings
         self.session = PlaybackSession(configuration: settings.engineConfiguration)
+        self.library = LibraryManager()
         let session = self.session
         settings.onEngineConfigurationChange = { configuration in
             session.updateConfiguration(configuration)
+        }
+    }
+
+    // MARK: Library
+
+    /// Starts the library (reconnect sources, scan what changed) and play counting.
+    func startLibrary() {
+        library.start()
+        startListeningTracker()
+    }
+
+    /// iOS shows the Files folder picker; the Mac shows an open panel.
+    func addLibraryFolder() {
+        #if os(iOS)
+        importMode = .folder
+        isFileImporterPresented = true
+        #else
+        presentFolderPanel()
+        #endif
+    }
+
+    func presentFileImporter() {
+        importMode = .files
+        isFileImporterPresented = true
+    }
+
+    /// Adds picked or dropped folders (and files) to the library.
+    func addSources(_ urls: [URL]) {
+        var problems: [String] = []
+        for url in urls {
+            do {
+                try library.addSource(at: url)
+            } catch {
+                problems.append(error.localizedDescription)
+            }
+        }
+        if !problems.isEmpty {
+            openErrorMessage = problems.joined(separator: "\n")
+        }
+    }
+
+    /// Counts plays with `ListeningTracker` and records durations the
+    /// scanner couldn't work out, for songs played from the library.
+    private func startListeningTracker() {
+        guard listeningTask == nil else { return }
+        listeningTask = Task { [weak self] in
+            var tracker = ListeningTracker()
+            var timedItem: UUID?
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                let controller = self.session.controller
+                let item = controller.currentItem
+                if tracker.update(itemID: item?.id, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying),
+                   let libraryID = item?.libraryID {
+                    self.library.recordPlay(libraryID: libraryID)
+                }
+                if let item, let libraryID = item.libraryID, timedItem != item.id, let duration = controller.duration {
+                    timedItem = item.id
+                    self.library.noteDuration(duration, libraryID: libraryID)
+                }
+            }
         }
     }
 
@@ -99,6 +172,32 @@ final class AppModel {
     }
 
     #if os(macOS)
+    /// File ▸ Add Folder to Library… (⇧⌘O).
+    func presentFolderPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Add to Library"
+        panel.message = "Choose folders of music or videos. Coreplay reads them where they are."
+        panel.prompt = "Add"
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        if panel.runModal() == .OK {
+            addSources(panel.urls)
+        }
+    }
+
+    /// Dropped items: folders join the library, files play.
+    func handleDrop(_ urls: [URL]) {
+        let folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+        let files = urls.filter { url in !folders.contains(url) }
+        if !folders.isEmpty {
+            addSources(folders)
+        }
+        if !files.isEmpty {
+            open(files, securityScoped: false)
+        }
+    }
+
     /// File ▸ Open… (⌘O). Any file can be chosen: if VLC can play it, Coreplay can.
     func presentOpenPanel() {
         let panel = NSOpenPanel()

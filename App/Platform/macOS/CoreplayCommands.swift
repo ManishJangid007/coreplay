@@ -18,6 +18,16 @@ struct CoreplayCommands: Commands {
                 model.presentOpenPanel()
             }
             .keyboardShortcut("o")
+
+            Button("Add Folder to Library\u{2026}") {
+                model.presentFolderPanel()
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+
+            Button("Check for New Files") {
+                model.library.scanAll()
+            }
+            .disabled(model.library.isScanning)
         }
 
         CommandMenu("Playback") {

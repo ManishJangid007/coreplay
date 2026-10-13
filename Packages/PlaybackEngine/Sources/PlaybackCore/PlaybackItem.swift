@@ -29,6 +29,10 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
     /// `true` when `url` came from a document picker, "Open in…" or a
     /// security-scoped bookmark and needs `startAccessingSecurityScopedResource`.
     public var requiresSecurityScope: Bool
+    /// The library's identifier for this file, when it was played from the
+    /// library. Library items keep their (possibly user-edited) title, artist
+    /// and artwork instead of whatever the engine reads from the file.
+    public var libraryID: UUID?
 
     public init(
         id: UUID = UUID(),
@@ -41,7 +45,8 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
         startPosition: TimeInterval? = nil,
         enginePreference: EnginePreference = .automatic,
         externalSubtitleURLs: [URL] = [],
-        requiresSecurityScope: Bool = false
+        requiresSecurityScope: Bool = false,
+        libraryID: UUID? = nil
     ) {
         self.id = id
         self.url = url
@@ -54,6 +59,7 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
         self.enginePreference = enginePreference
         self.externalSubtitleURLs = externalSubtitleURLs
         self.requiresSecurityScope = requiresSecurityScope
+        self.libraryID = libraryID
     }
 
     /// A readable title derived from a URL, used until real metadata arrives.

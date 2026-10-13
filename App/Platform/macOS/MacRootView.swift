@@ -2,6 +2,7 @@
 import DesignSystem
 import HomeFeature
 import LibraryFeature
+import MusicFeature
 import NowPlaying
 import PlaybackEngine
 import PlayerFeature
@@ -49,7 +50,10 @@ struct MacRootView: View {
         } detail: {
             NavigationStack {
                 detail
+                    .musicDestinations()
             }
+            // A new sidebar item starts a fresh navigation stack.
+            .id(selection)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.session.hasItem {
@@ -59,7 +63,7 @@ struct MacRootView: View {
         }
         .animation(Motion.standard, value: model.session.hasItem)
         .dropDestination(for: URL.self) { urls, _ in
-            model.open(urls, securityScoped: false)
+            model.handleDrop(urls)
             return !urls.isEmpty
         }
         .onKeyPress(.space) {
@@ -70,6 +74,7 @@ struct MacRootView: View {
         .task {
             let openWindow = openWindow
             model.openVideoWindow = { openWindow(id: VideoWindow.id) }
+            model.startLibrary()
         }
         .onChange(of: model.videoWindowRequest) {
             openWindow(id: VideoWindow.id)
@@ -99,7 +104,8 @@ struct MacRootView: View {
         return AppActions(
             openFiles: { model.presentOpenPanel() },
             openSettings: {},
-            showPlayer: { model.presentPlayer(expectingVideo: true) }
+            showPlayer: { model.presentPlayer(expectingVideo: true) },
+            addLibraryFolder: { model.addLibraryFolder() }
         )
     }
 

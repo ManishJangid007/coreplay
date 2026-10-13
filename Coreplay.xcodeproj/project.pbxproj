@@ -7,29 +7,31 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		599594423463B85648EA492F /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = EF4CA76194E02CD01CF64160 /* DesignSystem */; };
 		3A5D230149E7EE4633C20A72 /* PlaybackCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0A59903F0319A1B1AB119F2 /* PlaybackCore */; };
 		3CBA33EFCBF4BAF8EC8060BF /* PlaybackEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 712C815F4183A7B34F7DDDE1 /* PlaybackEngine */; };
 		57246B15C30D3C834CD037A3 /* NowPlaying in Frameworks */ = {isa = PBXBuildFile; productRef = 7927840CF73D323C6B333ACF /* NowPlaying */; };
-		EEFA8098F5D55DA1BFBA0F5F /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0210DA6B334482D14A93E9B7 /* HomeFeature */; };
-		A535BE47B9BF43655CA87CFF /* LibraryFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0F07DE120E271BD99C766E4F /* LibraryFeature */; };
-		EE47F718EA7DD7D8E66F5F29 /* SearchFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */; };
-		C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A263173EBA82166102D4D2E3 /* PlayerFeature */; };
+		599594423463B85648EA492F /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = EF4CA76194E02CD01CF64160 /* DesignSystem */; };
 		825EB36AC6FF3E6BD254B5E9 /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 33E28E723514AAB2953A9137 /* SettingsFeature */; };
+		A535BE47B9BF43655CA87CFF /* LibraryFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0F07DE120E271BD99C766E4F /* LibraryFeature */; };
+		C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A263173EBA82166102D4D2E3 /* PlayerFeature */; };
+		EE47F718EA7DD7D8E66F5F29 /* SearchFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */; };
+		EEFA8098F5D55DA1BFBA0F5F /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0210DA6B334482D14A93E9B7 /* HomeFeature */; };
+		FB78ADE97C290BEE7DAD27D2 /* MediaLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 4BCFDE072928EEC6BC17D322 /* MediaLibrary */; };
+		F7275DDEF6D053ECA560B4DC /* MusicFeature in Frameworks */ = {isa = PBXBuildFile; productRef = CF6DF0CF8040FA0C309CA247 /* MusicFeature */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Coreplay.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		609B94788D1E9F520B6F0170 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		1012C39740C4F006465C8BE1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		183B2EA300D54C6A4A6D1A8C /* NowPlaying */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = NowPlaying; sourceTree = "<group>"; };
+		190EF2A688276E59E435FC63 /* Features */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Features; sourceTree = "<group>"; };
+		1E8900DE111B1B17413B08D8 /* MediaLibrary */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MediaLibrary; sourceTree = "<group>"; };
+		609B94788D1E9F520B6F0170 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		6116F1FE271B7D20A8B69077 /* Networking */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Networking; sourceTree = "<group>"; };
 		7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Coreplay-macOS.entitlements"; sourceTree = "<group>"; };
+		A405DFE7E9CD68BF286D0268 /* MetadataProviders */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MetadataProviders; sourceTree = "<group>"; };
+		B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Coreplay.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBEF4412B6B9F9A4CE98C62D /* DesignSystem */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DesignSystem; sourceTree = "<group>"; };
 		E3C320FA32A299355063E560 /* PlaybackEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = PlaybackEngine; sourceTree = "<group>"; };
-		183B2EA300D54C6A4A6D1A8C /* NowPlaying */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = NowPlaying; sourceTree = "<group>"; };
-		1E8900DE111B1B17413B08D8 /* MediaLibrary */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MediaLibrary; sourceTree = "<group>"; };
-		A405DFE7E9CD68BF286D0268 /* MetadataProviders */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MetadataProviders; sourceTree = "<group>"; };
-		6116F1FE271B7D20A8B69077 /* Networking */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Networking; sourceTree = "<group>"; };
-		190EF2A688276E59E435FC63 /* Features */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Features; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -59,20 +61,20 @@
 				EE47F718EA7DD7D8E66F5F29 /* SearchFeature in Frameworks */,
 				C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */,
 				825EB36AC6FF3E6BD254B5E9 /* SettingsFeature in Frameworks */,
+				F7275DDEF6D053ECA560B4DC /* MusicFeature in Frameworks */,
+				FB78ADE97C290BEE7DAD27D2 /* MediaLibrary in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		C00CA25610F9DA71C1DBD08D = {
+		393E19BC3BE9F1080375E942 /* Config */ = {
 			isa = PBXGroup;
 			children = (
-				A24A7BF0773424745C04AD39 /* App */,
-				393E19BC3BE9F1080375E942 /* Config */,
-				E6F021E9F05AEEA32B17BFA2 /* Packages */,
-				E4C805FC033343202B0A9F0C /* Products */,
+				609B94788D1E9F520B6F0170 /* Base.xcconfig */,
 			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		A24A7BF0773424745C04AD39 /* App */ = {
@@ -85,12 +87,14 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		393E19BC3BE9F1080375E942 /* Config */ = {
+		C00CA25610F9DA71C1DBD08D = {
 			isa = PBXGroup;
 			children = (
-				609B94788D1E9F520B6F0170 /* Base.xcconfig */,
+				A24A7BF0773424745C04AD39 /* App */,
+				393E19BC3BE9F1080375E942 /* Config */,
+				E6F021E9F05AEEA32B17BFA2 /* Packages */,
+				E4C805FC033343202B0A9F0C /* Products */,
 			);
-			path = Config;
 			sourceTree = "<group>";
 		};
 		E4C805FC033343202B0A9F0C /* Products */ = {
@@ -99,15 +103,6 @@
 				B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		EBDA6E8B0C3ACD6BFC4B074E /* Support */ = {
-			isa = PBXGroup;
-			children = (
-				1012C39740C4F006465C8BE1 /* Info.plist */,
-				7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */,
-			);
-			path = Support;
 			sourceTree = "<group>";
 		};
 		E6F021E9F05AEEA32B17BFA2 /* Packages */ = {
@@ -122,6 +117,15 @@
 				190EF2A688276E59E435FC63 /* Features */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		EBDA6E8B0C3ACD6BFC4B074E /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				1012C39740C4F006465C8BE1 /* Info.plist */,
+				7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -154,6 +158,8 @@
 				A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */,
 				A263173EBA82166102D4D2E3 /* PlayerFeature */,
 				33E28E723514AAB2953A9137 /* SettingsFeature */,
+				CF6DF0CF8040FA0C309CA247 /* MusicFeature */,
+				4BCFDE072928EEC6BC17D322 /* MediaLibrary */,
 			);
 			productName = Coreplay;
 			productReference = B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */;
@@ -214,6 +220,110 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		00E577803A15052ACE342E19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 609B94788D1E9F520B6F0170 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		3AF89A98F7D6B0C67EF222A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/Support/Coreplay-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5JWWA6VR55;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		44580CCCFBBC71D082942989 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 609B94788D1E9F520B6F0170 /* Base.xcconfig */;
@@ -279,63 +389,6 @@
 			};
 			name = Debug;
 		};
-		00E577803A15052ACE342E19 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 609B94788D1E9F520B6F0170 /* Base.xcconfig */;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Release;
-		};
 		649A6C0A45CBF802B5C9E91F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -343,6 +396,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/Support/Coreplay-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5JWWA6VR55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -381,52 +435,6 @@
 			};
 			name = Debug;
 		};
-		3AF89A98F7D6B0C67EF222A1 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/Support/Coreplay-macOS.entitlements";
-				CODE_SIGN_STYLE = Automatic;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = App/Support/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -451,13 +459,17 @@
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		EF4CA76194E02CD01CF64160 /* DesignSystem */ = {
+		0210DA6B334482D14A93E9B7 /* HomeFeature */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = DesignSystem;
+			productName = HomeFeature;
 		};
-		D0A59903F0319A1B1AB119F2 /* PlaybackCore */ = {
+		0F07DE120E271BD99C766E4F /* LibraryFeature */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = PlaybackCore;
+			productName = LibraryFeature;
+		};
+		33E28E723514AAB2953A9137 /* SettingsFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SettingsFeature;
 		};
 		712C815F4183A7B34F7DDDE1 /* PlaybackEngine */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -467,25 +479,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = NowPlaying;
 		};
-		0210DA6B334482D14A93E9B7 /* HomeFeature */ = {
+		A263173EBA82166102D4D2E3 /* PlayerFeature */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = HomeFeature;
-		};
-		0F07DE120E271BD99C766E4F /* LibraryFeature */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = LibraryFeature;
+			productName = PlayerFeature;
 		};
 		A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SearchFeature;
 		};
-		A263173EBA82166102D4D2E3 /* PlayerFeature */ = {
+		D0A59903F0319A1B1AB119F2 /* PlaybackCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = PlayerFeature;
+			productName = PlaybackCore;
 		};
-		33E28E723514AAB2953A9137 /* SettingsFeature */ = {
+		EF4CA76194E02CD01CF64160 /* DesignSystem */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = SettingsFeature;
+			productName = DesignSystem;
+		};
+		4BCFDE072928EEC6BC17D322 /* MediaLibrary */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MediaLibrary;
+		};
+		CF6DF0CF8040FA0C309CA247 /* MusicFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MusicFeature;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

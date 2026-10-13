@@ -50,6 +50,26 @@
                ReferencedContainer = "container:Packages/NowPlaying">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "MetadataProvidersTests"
+               BuildableName = "MetadataProvidersTests"
+               BlueprintName = "MetadataProvidersTests"
+               ReferencedContainer = "container:Packages/MetadataProviders">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "MediaLibraryTests"
+               BuildableName = "MediaLibraryTests"
+               BlueprintName = "MediaLibraryTests"
+               ReferencedContainer = "container:Packages/MediaLibrary">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

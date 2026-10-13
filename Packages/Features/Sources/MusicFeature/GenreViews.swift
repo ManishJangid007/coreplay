@@ -1,0 +1,61 @@
+import DesignSystem
+import MediaLibrary
+import NowPlaying
+import SwiftData
+import SwiftUI
+
+/// Genres from the files' tags.
+public struct GenresView: View {
+    @Query(sort: \Genre.key) private var genres: [Genre]
+
+    public init() {}
+
+    public var body: some View {
+        Group {
+            if genres.isEmpty {
+                MusicEmptyState()
+            } else {
+                List(genres) { genre in
+                    NavigationLink(value: genre) {
+                        Label {
+                            Text(genre.name)
+                        } icon: {
+                            Image(systemName: "guitars")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle("Genres")
+    }
+}
+
+/// A genre's albums, with Play and Shuffle for all its songs.
+public struct GenreDetailView: View {
+    @Environment(LibraryManager.self) private var library
+    @Environment(PlaybackSession.self) private var session
+    private let genre: Genre
+
+    public init(genre: Genre) {
+        self.genre = genre
+    }
+
+    public var body: some View {
+        let playback = MusicPlayback(library: library, session: session)
+        let albums = genre.albums
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PlayShuffleButtons(
+                    onPlay: { playback.play(albums.flatMap(\.orderedTracks).filter { $0.genre?.persistentModelID == genre.persistentModelID }, shuffled: false) },
+                    onShuffle: { playback.shuffle(genre.tracks) }
+                )
+                .frame(maxWidth: .infinity)
+                AlbumGrid(albums: albums)
+            }
+            .padding(Metrics.contentPadding)
+        }
+        .navigationTitle(genre.name)
+    }
+}

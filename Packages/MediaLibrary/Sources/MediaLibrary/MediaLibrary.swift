@@ -1,20 +1,28 @@
 import Foundation
+import SwiftData
 
-/// Scanning, indexing, classification, artwork and the SwiftData model.
-///
-/// Status: placeholder. Built in Milestone 3 (sources, scanning, music tags,
-/// artwork) and Milestone 4 (filename parsing, movies and TV, progress rules).
-///
-/// Planned contents, from the build prompt:
-/// - `MediaFile` (bookmark, path, size, hash, duration, container, track info,
-///   engine preference) with `Track`, `Album`, `Artist`, `Genre`, `Movie`,
-///   `TVShow`, `Season`, `Episode`, `HomeVideo`, `Playlist` (manual and smart),
-///   `PlaybackState` and `Source` on top.
-/// - An incremental scanner actor keyed on path, size and modification date,
-///   FSEvents on macOS, background refresh on iOS; missing files are marked
-///   unavailable, never deleted.
-/// - Evaluate VLCMediaLibraryKit first; fall back to a SwiftData indexer.
-public enum MediaLibrary {
-    /// The milestone that turns this package from a placeholder into the library.
-    public static let plannedMilestone = 3
+/// Version 1 of the library schema (Milestone 3). Later versions add their
+/// models here with a migration stage, so existing libraries are upgraded
+/// rather than rebuilt.
+public enum LibrarySchemaV1: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [Source.self, MediaFile.self, Track.self, Album.self, Artist.self, Genre.self, PlaybackRecord.self]
+    }
+}
+
+public enum LibraryMigrationPlan: SchemaMigrationPlan {
+    public static var schemas: [any VersionedSchema.Type] { [LibrarySchemaV1.self] }
+    public static var stages: [MigrationStage] { [] }
+}
+
+public enum LibraryStore {
+    /// The on-disk library (Application Support/Library.store), or an
+    /// in-memory one for tests and previews.
+    public static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
+        let schema = Schema(versionedSchema: LibrarySchemaV1.self)
+        let configuration = ModelConfiguration("Library", schema: schema, isStoredInMemoryOnly: inMemory)
+        return try ModelContainer(for: schema, migrationPlan: LibraryMigrationPlan.self, configurations: configuration)
+    }
 }

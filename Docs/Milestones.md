@@ -2,15 +2,106 @@
 
 | # | Milestone | Status |
 | --- | --- | --- |
-| 1 | Foundation: project, packages, design system, VLCKit, basic player on iPhone and Mac | Builds on Mac and iOS; not yet run |
-| 2 | Engine: protocol, both engines, router, events, tracks and subtitles, Now Playing, remote commands, background audio | Builds on Mac and iOS; not yet run |
-| 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Next |
-| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | |
+| 1 | Foundation: project, packages, design system, VLCKit, basic player on iPhone and Mac | Done |
+| 2 | Engine: protocol, both engines, router, events, tracks and subtitles, Now Playing, remote commands, background audio | Done |
+| 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Built; builds and tests pass, needs a run with real music |
+| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Next |
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | |
 | 6 | VLC parity: feature checklist against the sample suite | |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
+
+---
+
+## Milestone 3: Library v1 — October 13, 2026
+
+### What was built
+
+**Sources**
+- **On iPhone and iPad:** the app's own folder ("On My iPhone ▸ Coreplay" in Files) is always a source, and any folder can be added from Files: iCloud Drive, an external drive or another app's folder. Access is kept with a security-scoped bookmark, so it survives relaunches.
+- **On the Mac:** folders from an open panel (File ▸ Add Folder to Library…, ⇧⌘O) or dropped on the window, plus one-click Music and Movies folders.
+- **The Sources screen** (Library ▸ Sources, or the Mac sidebar) has each source's song and video counts, scan progress, Check for New Files, Show in Finder on the Mac, and Remove from Library, which never deletes files.
+- **Overlapping folders are refused.** Adding a folder that's inside another source, or that contains one, gives a clear message instead of duplicating songs.
+
+**Scanning** (`MediaLibrary.LibraryIndexer`, a `@ModelActor` on a background context)
+- **Incremental.** Unchanged files (same path, size and modification date) are never read again.
+- **Concurrent reads.** Files are read sixteen at a time, and the library is saved every 128 files, so it fills in as the scan goes.
+- **Nothing is deleted.** Files that vanish (a drive unplugged) are marked unavailable and shown dimmed, so their history survives.
+- **When scans run:**
+  - at launch;
+  - on iOS, when the app returns to the foreground (at most every five minutes) and on pull to refresh;
+  - on the Mac, when FSEvents reports a change in a source folder.
+- **Cleanup.** Retagged songs move to their new album, and albums, artists and genres left empty are removed.
+
+**Tags and artwork** (`MetadataProviders`, pure Swift)
+- **Tag formats:**
+  - ID3v2.2, 2.3 and 2.4 (Unicode text, unsynchronisation, and the non-standard frame sizes some old encoders wrote) and ID3v1;
+  - FLAC and Ogg Vorbis comments, including embedded pictures;
+  - MP4/M4A atoms, including compilation, disc numbers and MusicBrainz IDs;
+  - APEv2;
+  - WAV LIST/INFO, and ID3 chunks in WAV and AIFF.
+- **Duration and format from the stream itself:**
+  - MP3, from the Xing, VBRI or CBR headers;
+  - AAC (ADTS), estimated from the frames;
+  - FLAC, from STREAMINFO;
+  - Ogg Vorbis and Opus, from granule positions;
+  - MP4, from mvhd and stsd (ALAC's real sample rate and bit depth included);
+  - WAV and AIFF.
+- **Badges.** That stream information drives the "Lossless" and "Hi-Res Lossless" labels.
+- **Names when tags are missing.** File and folder names fill the gaps: `Artist/Album (1997)/01 Title`, `Artist - Album/03. Title`, disc folders (`CD2`), iTunes-style `1-04 Title`, and `Artist - Title`.
+- **Artwork order.** Embedded front cover, then `cover`, `folder`, `front` or `albumart` images in the same folder.
+- **Artwork storage.** Each cover is stored once, by content, as 160, 600 and 1400 px JPEGs, so grids never decode full-size covers. Decoded images are cached in memory.
+
+**Data model** (SwiftData, versioned as `LibrarySchemaV1` with a migration plan ready for later versions)
+- **Files:** `Source` and `MediaFile`.
+- **Music:** `Track`, `Album`, `Artist` and `Genre`.
+- **History:** `PlaybackRecord` holds play counts, last played, and (later) positions and ratings.
+
+**Music** (new `MusicFeature` module)
+- **Albums:** a grid sorted by title, artist, recently added or year.
+- **Album pages:**
+  - large artwork, artist link, genre, year and quality;
+  - Play and Shuffle;
+  - tracks grouped by disc, with the song playing now marked;
+  - swipe and context menus for Play Next and Play Later, and Edit Info.
+- **Artists:** a list sorted the way Music sorts it, so "The Beatles" files under B. Artist pages have Albums, Appears On, and Songs.
+- **Songs:** every song, with Play and Shuffle.
+- **Genres:** a list, and pages with each genre's albums.
+- **Edit Info:** title, artist, album, album artist, genre, year, track, disc and compilation. Each edit is remembered and never overwritten by a rescan.
+- **Playing from the library:**
+  - Apple Music's Play, Shuffle, Play Next and Play Later;
+  - tapping a song plays from there through the list;
+  - the mini player and Now Playing show the library's artwork and titles.
+- **Home:** Recently Played and Recently Added shelves.
+- **Search:** artists, albums, songs and videos, with All, Music and Videos scopes.
+- **Home Videos:** lists every indexed video until Milestone 4 sorts them into movies and TV.
+- **Play counts:** a song counts as played after half its length or four minutes of actual listening (`ListeningTracker`). Seeking doesn't count, and songs under 30 seconds never do.
+
+### How it was checked
+- **Linux:** 92 Swift Testing tests pass. The 33 new tag and file-name tests run on synthetic files built byte by byte (ID3v2.2/2.3/2.4, ID3v1, FLAC, Ogg Vorbis and Opus, MP4 with ALAC, WAV, AIFF and APE). There are also 9 play-count tests.
+- **Mac, through `Tools/build-check.sh` with Xcode 26.4.1:**
+  - the Mac and iOS Simulator builds have no warnings;
+  - all 99 tests pass;
+  - that includes 7 SwiftData tests that scan real temporary folders: tagged and untagged MP3s, embedded and folder artwork, compilations, incremental rescans, missing files, edits surviving a rescan, and removing a source.
+- **Not yet tested:**
+  - a real music library;
+  - iCloud Drive and external-drive folders on iPhone;
+  - FSEvents updates on the Mac.
+
+### Stubbed or deferred
+- **Online lookups.** MusicBrainz and Cover Art Archive (opt-in) come later, with LRCLIB lyrics.
+- **Editing.** Edit Info works per song. Editing a whole album (title, artwork), artist photos, and Fix Match (which belongs to TMDB matching in Milestone 4) come later.
+- **Sections.** Playlists (Milestone 8) and Composers aren't built yet. Movies and TV Shows say they're coming, and Home Videos lists every video for now.
+- **Opened files.** Files opened with Open In or from Finder play but can't be added to the library from the player yet.
+- **iOS background refresh.** Scheduled scans while the app isn't running aren't set up yet; scans happen at launch, on return to the app, and on pull to refresh.
+- **Long lists.** There's no A–Z index on the side of long lists, and the performance pass with 50,000 songs is Milestone 9.
+
+### Where this deviates from the build prompt, and why
+1. **VLCMediaLibraryKit was evaluated and not used.** It keeps its own SQLite database and Objective-C model objects, so every screen would need a layer mapping it to SwiftData. It would also add a second VideoLAN binary that has to match the VLCKit build. Coreplay uses its own SwiftData indexer instead, which is the prompt's fallback.
+2. **Tags are read by Coreplay's own Swift reader, not libVLC or TagLib.** It needs no extra dependency, runs on any thread without spinning up libVLC, and is tested on any platform. The trade-off is that WMA (ASF) tags aren't read yet; those files fall back to their names.
+3. **`PlaybackState` is called `PlaybackRecord` and is keyed by a content fingerprint.** It isn't a relationship to `MediaFile`. The name avoids a clash with the engine's `PlaybackState`. The fingerprint (size plus the first and last 64 KB) keeps play history when files move or are renamed, and lets history sync on its own later.
+4. **Recently Played and Recently Added arrived on Home early.** The prompt lists them with Home in Milestone 4.
 
 ---
 
