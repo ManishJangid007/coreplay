@@ -1,0 +1,14 @@
+// Coreplay shared build configuration.
+//
+// Set your team and bundle identifier prefix here once; every configuration
+// and platform picks them up. (Choosing a team in Xcode's Signing & Capabilities
+// pane also works: Xcode then stores it in the project file, which overrides this.)
+
+// Your Apple Developer Team ID (Xcode ▸ Settings ▸ Accounts), e.g. ABCDE12345.
+DEVELOPMENT_TEAM =
+
+// Reverse-DNS prefix for the bundle identifier.
+BUNDLE_ID_PREFIX = com.manishjangid
+
+MARKETING_VERSION = 0.2.0
+CURRENT_PROJECT_VERSION = 2

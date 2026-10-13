@@ -1,0 +1,511 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		599594423463B85648EA492F /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = EF4CA76194E02CD01CF64160 /* DesignSystem */; };
+		3A5D230149E7EE4633C20A72 /* PlaybackCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0A59903F0319A1B1AB119F2 /* PlaybackCore */; };
+		3CBA33EFCBF4BAF8EC8060BF /* PlaybackEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 712C815F4183A7B34F7DDDE1 /* PlaybackEngine */; };
+		57246B15C30D3C834CD037A3 /* NowPlaying in Frameworks */ = {isa = PBXBuildFile; productRef = 7927840CF73D323C6B333ACF /* NowPlaying */; };
+		EEFA8098F5D55DA1BFBA0F5F /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0210DA6B334482D14A93E9B7 /* HomeFeature */; };
+		A535BE47B9BF43655CA87CFF /* LibraryFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 0F07DE120E271BD99C766E4F /* LibraryFeature */; };
+		EE47F718EA7DD7D8E66F5F29 /* SearchFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */; };
+		C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A263173EBA82166102D4D2E3 /* PlayerFeature */; };
+		825EB36AC6FF3E6BD254B5E9 /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 33E28E723514AAB2953A9137 /* SettingsFeature */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Coreplay.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		609B94788D1E9F520B6F0170 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		1012C39740C4F006465C8BE1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Coreplay-macOS.entitlements"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B026F8E67F908D7B229825FB /* Coreplay */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Coreplay;
+			sourceTree = "<group>";
+		};
+		DF5975B9D634CB5B4BF688F2 /* Platform */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Platform;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		113651926E3EE83F33D308A9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				599594423463B85648EA492F /* DesignSystem in Frameworks */,
+				3A5D230149E7EE4633C20A72 /* PlaybackCore in Frameworks */,
+				3CBA33EFCBF4BAF8EC8060BF /* PlaybackEngine in Frameworks */,
+				57246B15C30D3C834CD037A3 /* NowPlaying in Frameworks */,
+				EEFA8098F5D55DA1BFBA0F5F /* HomeFeature in Frameworks */,
+				A535BE47B9BF43655CA87CFF /* LibraryFeature in Frameworks */,
+				EE47F718EA7DD7D8E66F5F29 /* SearchFeature in Frameworks */,
+				C44B3E398FFB9D6F24D53719 /* PlayerFeature in Frameworks */,
+				825EB36AC6FF3E6BD254B5E9 /* SettingsFeature in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C00CA25610F9DA71C1DBD08D = {
+			isa = PBXGroup;
+			children = (
+				A24A7BF0773424745C04AD39 /* App */,
+				393E19BC3BE9F1080375E942 /* Config */,
+				E4C805FC033343202B0A9F0C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A24A7BF0773424745C04AD39 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B026F8E67F908D7B229825FB /* Coreplay */,
+				DF5975B9D634CB5B4BF688F2 /* Platform */,
+				EBDA6E8B0C3ACD6BFC4B074E /* Support */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		393E19BC3BE9F1080375E942 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				609B94788D1E9F520B6F0170 /* Base.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		E4C805FC033343202B0A9F0C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EBDA6E8B0C3ACD6BFC4B074E /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				1012C39740C4F006465C8BE1 /* Info.plist */,
+				7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		84C713DDCE90A04FDF7058D9 /* Coreplay */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9A58BB468574F7D461EFE847 /* Build configuration list for PBXNativeTarget "Coreplay" */;
+			buildPhases = (
+				BCB366DE5F59172A84ED3DD3 /* Sources */,
+				113651926E3EE83F33D308A9 /* Frameworks */,
+				7419875CE608E1759D819CBD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B026F8E67F908D7B229825FB /* Coreplay */,
+				DF5975B9D634CB5B4BF688F2 /* Platform */,
+			);
+			name = Coreplay;
+			packageProductDependencies = (
+				EF4CA76194E02CD01CF64160 /* DesignSystem */,
+				D0A59903F0319A1B1AB119F2 /* PlaybackCore */,
+				712C815F4183A7B34F7DDDE1 /* PlaybackEngine */,
+				7927840CF73D323C6B333ACF /* NowPlaying */,
+				0210DA6B334482D14A93E9B7 /* HomeFeature */,
+				0F07DE120E271BD99C766E4F /* LibraryFeature */,
+				A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */,
+				A263173EBA82166102D4D2E3 /* PlayerFeature */,
+				33E28E723514AAB2953A9137 /* SettingsFeature */,
+			);
+			productName = Coreplay;
+			productReference = B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7AD30BD0F5CD8B5679B50A2A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					84C713DDCE90A04FDF7058D9 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = 4434E49167BDF96E33F10BF2 /* Build configuration list for PBXProject "Coreplay" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C00CA25610F9DA71C1DBD08D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3FD69ABAB4BDA3EFF3197412 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */,
+				00D382FBBF561C39296F2FDF /* XCLocalSwiftPackageReference "Packages/PlaybackEngine" */,
+				72DAD8BC9B8C70A3EEF41D23 /* XCLocalSwiftPackageReference "Packages/NowPlaying" */,
+				850BA53B8F39D933F3C7DDBF /* XCLocalSwiftPackageReference "Packages/MediaLibrary" */,
+				E7353BDD92CC8B581DB6DFF5 /* XCLocalSwiftPackageReference "Packages/MetadataProviders" */,
+				4FCA961AC8134CBC0D89F23B /* XCLocalSwiftPackageReference "Packages/Networking" */,
+				D609BEB5B7438681293A9521 /* XCLocalSwiftPackageReference "Packages/Features" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E4C805FC033343202B0A9F0C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				84C713DDCE90A04FDF7058D9 /* Coreplay */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7419875CE608E1759D819CBD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BCB366DE5F59172A84ED3DD3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		44580CCCFBBC71D082942989 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 609B94788D1E9F520B6F0170 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		00E577803A15052ACE342E19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 609B94788D1E9F520B6F0170 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		649A6C0A45CBF802B5C9E91F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/Support/Coreplay-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3AF89A98F7D6B0C67EF222A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/Support/Coreplay-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4434E49167BDF96E33F10BF2 /* Build configuration list for PBXProject "Coreplay" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				44580CCCFBBC71D082942989 /* Debug */,
+				00E577803A15052ACE342E19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9A58BB468574F7D461EFE847 /* Build configuration list for PBXNativeTarget "Coreplay" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				649A6C0A45CBF802B5C9E91F /* Debug */,
+				3AF89A98F7D6B0C67EF222A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		3FD69ABAB4BDA3EFF3197412 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/DesignSystem;
+		};
+		00D382FBBF561C39296F2FDF /* XCLocalSwiftPackageReference "Packages/PlaybackEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/PlaybackEngine;
+		};
+		72DAD8BC9B8C70A3EEF41D23 /* XCLocalSwiftPackageReference "Packages/NowPlaying" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/NowPlaying;
+		};
+		850BA53B8F39D933F3C7DDBF /* XCLocalSwiftPackageReference "Packages/MediaLibrary" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MediaLibrary;
+		};
+		E7353BDD92CC8B581DB6DFF5 /* XCLocalSwiftPackageReference "Packages/MetadataProviders" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MetadataProviders;
+		};
+		4FCA961AC8134CBC0D89F23B /* XCLocalSwiftPackageReference "Packages/Networking" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Networking;
+		};
+		D609BEB5B7438681293A9521 /* XCLocalSwiftPackageReference "Packages/Features" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Features;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		EF4CA76194E02CD01CF64160 /* DesignSystem */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DesignSystem;
+		};
+		D0A59903F0319A1B1AB119F2 /* PlaybackCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PlaybackCore;
+		};
+		712C815F4183A7B34F7DDDE1 /* PlaybackEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PlaybackEngine;
+		};
+		7927840CF73D323C6B333ACF /* NowPlaying */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NowPlaying;
+		};
+		0210DA6B334482D14A93E9B7 /* HomeFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HomeFeature;
+		};
+		0F07DE120E271BD99C766E4F /* LibraryFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LibraryFeature;
+		};
+		A9C0F6F58AC1A9D02F4AD30E /* SearchFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SearchFeature;
+		};
+		A263173EBA82166102D4D2E3 /* PlayerFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PlayerFeature;
+		};
+		33E28E723514AAB2953A9137 /* SettingsFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SettingsFeature;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7AD30BD0F5CD8B5679B50A2A /* Project object */;
+}
