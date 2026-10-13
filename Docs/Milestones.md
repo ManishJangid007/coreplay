@@ -5,9 +5,9 @@
 | 1 | Foundation: project, packages, design system, VLCKit, basic player on iPhone and Mac | Done |
 | 2 | Engine: protocol, both engines, router, events, tracks and subtitles, Now Playing, remote commands, background audio | Done |
 | 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Done (checked on the Mac) |
-| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Built; builds and tests pass, needs a run with real videos |
-| 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Next |
-| 6 | VLC parity: feature checklist against the sample suite | |
+| 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Done (checked on the Mac) |
+| 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
+| 6 | VLC parity: feature checklist against the sample suite | Next |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
@@ -18,12 +18,162 @@ These come on top of the plan; nothing in the plan was dropped for them.
 
 | Request | Where it lands | Status |
 | --- | --- | --- |
-| Frame previews above the timeline while scrubbing, like YouTube | Milestone 5, with the scrub-preview sprite sheets the plan lists | The frame grabber it needs (`FrameGrabber`) is built |
-| Video plays inside the app's own window, with every playback option in the player | Milestone 4 | Done on the Mac: the player covers the library in the same window (F for full screen, Esc to go back). iPhone and iPad already play full-screen inside the app. Options are behind the player's ••• button |
+| Frame previews above the timeline while scrubbing, like YouTube | Milestone 5 | Done: drag the scrubber, or hover over it on the Mac |
+| Video plays inside the app's own window, with every playback option in the player | Milestones 4 and 5 | Done: the player opens over the library in the same window, and its ••• button opens every option in a panel over the video |
 | Artwork for videos without any: a frame picked automatically, another frame of your choice, or your own image | Milestone 4 | Done (Choose Artwork) |
 | An optional iPod-style Cover Flow view, with smooth scrolling | Milestone 4 | Done for Albums, Movies and TV Shows; the grid stays the default |
-| Clicking the music artwork opens Now Playing in the same window, and its controls look right | Milestone 4 | Done on the Mac: Now Playing fills the window, with a new layout |
+| Clicking the music artwork opens Now Playing in the same window, and its controls look right | Milestones 4 and 5 | Done: Now Playing fills the window, with the new controls |
+| Movie and show artwork found from the name, with a free source | Milestone 5 | Done: TVmaze for TV shows and Wikipedia for movies, with no key |
+| Native-looking player controls instead of boxy ones, with room around the icons (the subtitle button was squeezed) | Milestone 5 | Done for the video player, Now Playing and the Mac playback bar |
 | One app that feels the same everywhere, with a very large library | Every milestone; measured in Milestone 9 | Ongoing |
+
+---
+
+## Milestone 5: Video player polish — October 13, 2026
+
+### What was built
+
+**The video player, redesigned** (your request for native controls that aren't boxy)
+- **Chrome-free by default.** Tap, or move the pointer on the Mac, to show the controls. They hide after three seconds of playing.
+- **Liquid Glass, as in iOS 26:**
+  - round glass buttons for Back and Picture in Picture;
+  - a glass capsule at the top right with AirPlay (plus volume and full screen on the Mac);
+  - a glass capsule at the bottom right with speed, audio and subtitles, and ••• for everything else.
+- **Plain transport in the middle,** as in the TV app: back 10 seconds, play/pause, forward 10 seconds, with a soft shadow so they read over bright video. No boxes or bezels.
+- **Room around every symbol.** Buttons are 44 points on iPhone and iPad and 40 on the Mac, around 17-point symbols, so nothing is squeezed (the subtitle button was).
+- **The title** sits above the scrubber, with a line of details and a 4K or HD badge.
+- **Short confirmations** appear over the video, such as "Speed 1.5×", "Subtitles: English" and "Saved to Pictures".
+- **Pinch** on iPhone and iPad switches between fit and fill.
+- **AirPlay:** while a video plays on an Apple TV, the player says so instead of showing black.
+
+**Frame previews while scrubbing** (your YouTube-style request)
+- Drag the scrubber, or hover over it on the Mac, to see the frame at that point with the chapter name and time.
+- Chapters show as small gaps in the scrubber.
+- **How the frames are made:**
+  - once a local video has played for two seconds, up to 200 small frames (at least two seconds apart) are made in the background;
+  - they're made coarse to fine, so a nearby frame is ready almost at once and the rest fill in while you watch;
+  - frames you scrub to are made next;
+  - AVFoundation makes them for MP4 and MOV, and VLC's thumbnailer for everything else.
+- Finished sets are kept in Caches (trimmed to 300 MB, oldest first), so a video you watch again previews at once.
+
+**Every Level 2 option, inside the player** (your request)
+- **Where:** ••• opens a glass panel over the video. It sits beside the video on wide screens and rises from the bottom on iPhone in portrait. Tapping outside closes it. Now Playing's ••• opens the same panel for music.
+- **Audio:**
+  - the language, with the track's own name when the file has one ("English · Commentary · Stereo");
+  - audio timing;
+  - channels: stereo, mono, left or right only, swapped, or Dolby Surround.
+- **Subtitles:** the language, Add Subtitle File, subtitle timing, and text size.
+- **Speed:** 0.25× to 4×, with speech kept at its natural pitch.
+- **Picture:**
+  - fit or fill, the shape (16:9, 4:3, 2.39:1 and others) and crop;
+  - colours (brightness, contrast, saturation, hue and gamma);
+  - deinterlacing.
+- **Sound:** a 10-band equalizer with libVLC's 18 presets and a preamp. It's remembered between launches, as is the subtitle size.
+- **Chapters** to jump to.
+- **Tools:**
+  - A–B loop;
+  - frame by frame;
+  - Save Picture, to Photos on iPhone and iPad or the Pictures folder on the Mac;
+  - Go To a typed time ("1:02:03", "45m").
+- **Now Playing:**
+  - which engine is playing, and why;
+  - a switch to the other engine when it can open the file;
+  - the resolution, length, audio format and file.
+- **Engine hand-off:** options AVFoundation can't do move playback to VLC at the same position, as timing already did. These are shape, crop, colours, deinterlacing, channels, the equalizer and subtitle size.
+
+**Picture in Picture and AirPlay**
+- **Both engines:** AVFoundation uses Apple's PiP controller. VLC uses VLCKit 4's PiP support, fed by the player's own video view.
+- **Going home on iPhone and iPad:** AVFoundation video moves into PiP by itself.
+- **The player and PiP:** the player closes while PiP is on and comes back when you return from PiP.
+- **Screen sleep on iPhone and iPad:** the screen stays on while video plays, but not in PiP, when you're using other apps.
+- **AirPlay:** buttons in the player (video devices first) and in Now Playing. AVFoundation video plays on the Apple TV itself.
+
+**The Mac**
+- **Menus:**
+  - Playback: Jump to Time ⌘J, Chapters, Speed and the A–B loop;
+  - Audio: the track, volume, timing, Channels and Equalizer;
+  - Video: Size, Shape, Crop, Deinterlacing, Reset Colours, Next and Previous Frame (⌃⌘→, ⌃⌘←), Save Picture ⌥⌘S, Picture in Picture ⌃⌘P and Float on Top;
+  - Subtitles: the track, Add File, timing and Text Size.
+- **Keys in the player, following VLC** (all but ↑ ↓ work on an iPad with a keyboard too):
+
+  | Key | Action |
+  | --- | --- |
+  | Space | Play or pause |
+  | ← → | Skip 10 seconds (with ⌥, a minute) |
+  | ↑ ↓ | Volume |
+  | F | Full screen |
+  | M | Mute |
+  | Esc | Close the options panel, leave full screen, or go back to the library |
+  | [ ] (or - +) | Slower and faster |
+  | = | Normal speed |
+  | , . | Frame by frame |
+  | B, V | Cycle audio tracks and subtitles |
+  | G H | Subtitle timing |
+  | J K | Audio timing |
+  | Shift-L | A–B loop |
+  | Shift-S | Save Picture |
+  | P | Picture in Picture |
+  | I | Options |
+- **Float on Top** keeps the window above others.
+- **The Dock menu** shows what's playing, with Play/Pause, Next, Previous and Show Video.
+- **Display sleep:** the display stays awake while video plays.
+
+**Artwork and details without a TMDB key** (your request)
+- **TV shows come from TVmaze:** posters, synopses and cast, plus episode titles, synopses, air dates and stills.
+- **Movies come from Wikipedia and Wikidata:** the poster from the film's article, its opening paragraph as the synopsis, the year, and the IMDb ID.
+- **When they run:** automatically after scans, with nothing to set up. Settings ▸ Metadata ▸ Free Sources turns them off and has Look Up Again. Fix Match searches them too.
+- **With a TMDB key,** TMDB is used instead and replaces their details and artwork. Posters beside your files and artwork you chose are kept.
+- **Credits:** movie and show pages credit TVmaze or Wikipedia, as their licences (CC BY-SA) ask.
+- **Not used:** the iTunes Search API, because its terms only allow promoting iTunes content.
+
+**Now Playing (music)**
+- It has the same glass header buttons, plain transport and capsule volume as the video player.
+- ••• opens the options panel: speed, sound, audio tracks and Now Playing.
+- The narrow Mac layout keeps the title at full size.
+- The Mac playback bar's volume is a mute button and a capsule slider.
+
+### How it was checked
+- **Linux:** 158 Swift Testing tests pass. New ones cover:
+  - picture shapes, colour limits, the equalizer, subtitle sizes and the A–B loop;
+  - the order frame previews are made in, and finding the nearest frame;
+  - times typed into Go To;
+  - TVmaze and Wikipedia requests, responses and matching;
+  - track names.
+- **Mac, through `Tools/build-check.sh` with Xcode 26.4.1:**
+  - the Mac and iOS Simulator builds have no warnings;
+  - all 180 tests pass;
+  - new: lookups without a key, against stubbed TVmaze and Wikipedia replies.
+- **Snapshot tests** draw the player screens to `build/snapshots`:
+  - the video player and its top controls, every options page, Now Playing wide and narrow, the playback bar and the scrubber;
+  - I checked them for layout and spacing, and fixed what they showed. The Equalizer switch's row was too narrow on the Mac, the narrow Now Playing shrank the title, preset names had mixed capitals, and commentary tracks lost their names;
+  - they can't show the video, AirPlay buttons, text fields, Mac switches or real Liquid Glass.
+- **Not yet tested:**
+  - Picture in Picture with real videos, on either engine;
+  - frame previews and lookups without a key, with your files;
+  - AirPlay;
+  - anything on iPhone or iPad.
+
+### Stubbed or deferred
+- **Milestone 6 (VLC parity):**
+  - subtitle style beyond size (font, colour, outline, background, position, text encoding, two tracks at once);
+  - zoom, rotate and flip;
+  - 360° video;
+  - deinterlacing modes;
+  - volume boost, normalisation and ReplayGain;
+  - DVD menus;
+  - bitrate, frame rate and sample rate in Now Playing;
+  - remembering options per file.
+- **VLC video when you go home on iPhone:** it pauses unless PiP is already on. Starting PiP for it automatically needs testing on a device. VLC's PiP on the Mac depends on VLCKit 4's alpha and needs checking too.
+- **VLC-only formats on an Apple TV:** they play their sound over AirPlay, but the picture needs screen mirroring for now. Sending the picture to an external display, as VLC for iOS does, comes with Chromecast in Milestone 7.
+- **Frame previews** are made for local files only. Network streams come in Milestone 7.
+- **iPad multiple windows** stay off, and landscape-first video on iPhone isn't done. Milestone 1 placed both here; they move to Milestone 9.
+
+### Where this deviates from the build prompt, and why
+1. **There are no separate player windows.** Video plays in the main window, as you asked. Float on Top floats that window.
+2. **Free sources look titles up without a key, and they're on by default.** The prompt says lookups are opt-in and use your own keys. You asked for artwork found from names automatically. Your video titles are sent to TVmaze and Wikipedia; Settings ▸ Metadata ▸ Free Sources turns this off.
+3. **Frame previews are separate small JPEGs, not sprite sheets.** They're made coarse to fine and shown as they arrive, then saved as one file per video.
+4. **The equalizer arrived early** (it was planned for Milestone 8). It's a page of the options panel, reached from both players, rather than its own sheet.
+5. **Speed is a menu and a panel page**, not a long press on the speed button. A long press is hard to discover and doesn't exist with a mouse.
 
 ---
 
@@ -348,6 +498,7 @@ Before that first build, verification happened outside Xcode:
 ### Before any public release
 - The supplied logo combines Apple's logo and VLC's cone. That's fine for a personal build. Apple's trademark guidelines don't allow the Apple logo in third-party app icons (App Review rejects it), and the cone is a VideoLAN trademark, so the icon needs replacing before distribution.
 - The prompt's licensing points still apply: VLCKit stays dynamically linked and unmodified, the Acknowledgements screen stays, check codec patents, and get legal advice.
+- Many film posters on Wikipedia are non-free images used there under fair use. Fine for a personal library; before a public release, drop Wikipedia posters or use another source.
 
 ### Running it
 1. Open `Coreplay.xcodeproj` in Xcode 26 or later.

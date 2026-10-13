@@ -38,6 +38,47 @@ public enum PlaybackTimeFormatter {
         return parts.joined(separator: ", ")
     }
 
+    /// Reads a typed time: "1:02:03", "62:03", "45", or "1h 2m 3s".
+    /// Returns `nil` for anything else.
+    public static func seconds(from text: String) -> TimeInterval? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.contains(where: { "hms".contains($0) }) {
+            var total: TimeInterval = 0
+            var number = ""
+            var sawUnit = false
+            for character in trimmed where !character.isWhitespace {
+                if character.isNumber || character == "." {
+                    number.append(character)
+                    continue
+                }
+                guard let value = Double(number) else { return nil }
+                switch character {
+                case "h": total += value * 3_600
+                case "m": total += value * 60
+                case "s": total += value
+                default: return nil
+                }
+                number = ""
+                sawUnit = true
+            }
+            guard number.isEmpty, sawUnit else { return nil }
+            return total
+        }
+
+        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        guard (1...3).contains(parts.count) else { return nil }
+        var total: TimeInterval = 0
+        for (index, part) in parts.enumerated() {
+            guard let value = Double(part), value >= 0 else { return nil }
+            // Minutes and seconds after the first field must be under 60.
+            if index > 0, value >= 60 { return nil }
+            total = total * 60 + value
+        }
+        return total
+    }
+
     private static func twoDigits(_ value: Int) -> String {
         value < 10 ? "0\(value)" : "\(value)"
     }

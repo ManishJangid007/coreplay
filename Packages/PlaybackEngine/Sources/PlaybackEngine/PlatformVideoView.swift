@@ -18,8 +18,9 @@ public typealias PlatformView = NSView
 /// AVPlayerEngine installs an `AVPlayerLayer`; VLCKitEngine hands the view to
 /// VLC as its drawable and VLC adds its own subview. The view keeps the
 /// player layer sized to its bounds, so SwiftUI layout, rotation and
-/// full-screen transitions just work.
-public final class PlatformVideoView: PlatformView, VideoOutputHost {
+/// full-screen transitions just work. The controller's instance is a
+/// `VideoHostView`, which adds VLC's Picture in Picture hooks.
+public class PlatformVideoView: PlatformView, VideoOutputHost {
     /// A layer an engine installed (AVPlayerLayer). Kept filling the bounds.
     var managedLayer: CALayer? {
         didSet {

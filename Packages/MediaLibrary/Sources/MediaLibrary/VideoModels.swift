@@ -29,13 +29,16 @@ public enum VideoKind: String, Sendable, Codable, CaseIterable, Identifiable {
 
 /// Where a video's or show's details came from, and whether to look it up.
 public enum MatchState: String, Sendable, Codable {
-    /// Waiting for a TMDB lookup (which happens once a key is set).
+    /// Waiting for a lookup.
     case pending
     /// Details and artwork from TMDB.
     case matched
+    /// Details and artwork from the free sources (TVmaze for shows, Wikipedia
+    /// for movies), found without a TMDB key. TMDB improves them once a key is set.
+    case keyless
     /// The user chose the TMDB entry (Fix Match).
     case manual
-    /// TMDB had nothing close enough; names and local files are used.
+    /// Nothing close enough was found; names and local files are used.
     case notFound
     /// Never looked up: home videos.
     case local

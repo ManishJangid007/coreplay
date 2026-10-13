@@ -13,6 +13,8 @@ public enum PlaybackEvent: Hashable, Sendable {
     case chaptersChanged
     case videoDimensionsChanged(VideoDimensions?)
     case metadataChanged(MediaMetadata)
+    /// The video started or stopped playing on an AirPlay device.
+    case externalPlaybackChanged(Bool)
     /// The item played to its end. Always followed by `.stateChanged(.ended)`.
     case endOfMedia
 }
@@ -76,6 +78,37 @@ public protocol PlaybackEngine: AnyObject {
     var videoDimensions: VideoDimensions? { get }
     /// Renders into `host`, or stops rendering when `nil`.
     func attachVideoOutput(to host: (any VideoOutputHost)?)
+
+    // MARK: Picture (Level 2)
+
+    var fillMode: VideoFillMode { get set }
+    /// `nil` keeps the file's own shape. Requires `.aspectRatioOverride`.
+    var aspectRatio: VideoRatio? { get set }
+    /// `nil` shows the whole picture. Requires `.crop`.
+    var cropRatio: VideoRatio? { get set }
+    /// Requires `.videoAdjustments`.
+    var videoAdjustments: VideoAdjustments { get set }
+    /// Requires `.deinterlacing`.
+    var deinterlace: DeinterlaceMode { get set }
+
+    // MARK: Sound (Level 2)
+
+    /// Requires `.stereoModes`.
+    var stereoMode: StereoMode { get set }
+    /// Requires `.equalizer`.
+    var equalizer: EqualizerSettings { get set }
+
+    // MARK: Subtitles (Level 2)
+
+    /// Text size relative to the engine's default. Requires `.subtitleStyling`.
+    var subtitleScale: Float { get set }
+
+    // MARK: Navigation (Level 2)
+
+    /// Shows the next (or previous) frame, pausing first. Requires `.frameStepping`.
+    func stepFrame(forward: Bool)
+    /// Writes the frame on screen to `url` as a PNG. Requires `.snapshots`.
+    func saveSnapshot(to url: URL) async throws
 
     /// Stops playback and releases every resource. The engine is unusable afterwards.
     func shutdown() async

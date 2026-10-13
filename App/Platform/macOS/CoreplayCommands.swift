@@ -1,18 +1,34 @@
 #if os(macOS)
 import NowPlaying
+import PlaybackCore
 import PlaybackEngine
 import SwiftUI
 
-/// File and Playback menus. Shortcuts follow VLC and QuickTime: ⌘O open,
-/// ⌘←/⌘→ previous/next, ⌥⌘←/⌥⌘→ skip 10 s, ⌘↑/⌘↓ volume. Space and the
-/// plain arrow keys are handled by the player views so they never steal
-/// typing from text fields.
+/// The Mac menu bar: File, Playback, Audio, Video and Subtitles, with
+/// shortcuts following VLC and QuickTime: ⌘O open, ⌘←/⌘→ previous/next,
+/// ⌥⌘←/⌥⌘→ skip 10 s, ⌘↑/⌘↓ volume, ⌥⌘↓ mute, ⌘J jump to a time, ⌥⌘S
+/// snapshot. Keys without ⌘ (Space, arrows, F, M, [ ], , . and VLC's
+/// G/H/J/K) are handled by the player itself, so they never steal typing
+/// from text fields.
 struct CoreplayCommands: Commands {
     let model: AppModel
 
     private var session: PlaybackSession { model.session }
+    private var controller: PlaybackController { model.session.controller }
+    private var hasItem: Bool { session.hasItem }
+    private var hasVideo: Bool { session.hasItem && controller.hasVideo }
 
     var body: some Commands {
+        fileCommands
+        playbackMenu
+        audioMenu
+        videoMenu
+        subtitlesMenu
+    }
+
+    // MARK: File
+
+    private var fileCommands: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("Open\u{2026}") {
                 model.presentOpenPanel()
@@ -29,12 +45,16 @@ struct CoreplayCommands: Commands {
             }
             .disabled(model.library.isScanning)
         }
+    }
 
+    // MARK: Playback
+
+    private var playbackMenu: some Commands {
         CommandMenu("Playback") {
-            Button(session.controller.isPlaying ? "Pause" : "Play") {
+            Button(controller.isPlaying ? "Pause" : "Play") {
                 session.togglePlayPause()
             }
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
 
             Button(model.isPlayerPresented ? "Hide Player" : "Show Player") {
                 if model.isPlayerPresented {
@@ -44,13 +64,13 @@ struct CoreplayCommands: Commands {
                 }
             }
             .keyboardShortcut("p", modifiers: [.command, .option])
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
 
             Button("Stop") {
                 Task { await session.stop() }
             }
             .keyboardShortcut(".")
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
 
             Divider()
 
@@ -64,7 +84,7 @@ struct CoreplayCommands: Commands {
                 Task { await session.previous() }
             }
             .keyboardShortcut(.leftArrow)
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
 
             Divider()
 
@@ -72,30 +92,46 @@ struct CoreplayCommands: Commands {
                 Task { await session.skip(by: 10) }
             }
             .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
 
             Button("Skip Back 10 Seconds") {
                 Task { await session.skip(by: -10) }
             }
             .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-            .disabled(!session.hasItem)
+            .disabled(!hasItem)
+
+            Button("Jump to Time\u{2026}") {
+                model.presentJumpToTime()
+            }
+            .keyboardShortcut("j")
+            .disabled(!hasItem || !controller.isSeekable)
+
+            if !controller.chapters.isEmpty {
+                Menu("Chapters") {
+                    ForEach(controller.chapters) { chapter in
+                        Button("\(chapter.displayTitle)  \(PlaybackTimeFormatter.string(from: chapter.start, referenceDuration: controller.duration))") {
+                            controller.selectChapter(chapter)
+                        }
+                    }
+                }
+            }
 
             Divider()
 
-            Button("Volume Up") {
-                session.controller.setVolume(session.controller.volume + 0.1)
+            Picker("Speed", selection: Binding(
+                get: { controller.rate },
+                set: { rate in Task { await controller.setRate(rate) } }
+            )) {
+                ForEach([Float(0.5), 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4], id: \.self) { rate in
+                    Text(Self.speedLabel(rate)).tag(rate)
+                }
             }
-            .keyboardShortcut(.upArrow)
+            .disabled(!hasItem)
 
-            Button("Volume Down") {
-                session.controller.setVolume(session.controller.volume - 0.1)
+            Button(loopTitle) {
+                controller.advanceABLoop()
             }
-            .keyboardShortcut(.downArrow)
-
-            Button(session.controller.isMuted ? "Unmute" : "Mute") {
-                session.controller.setMuted(!session.controller.isMuted)
-            }
-            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+            .disabled(!hasItem || !controller.isSeekable)
 
             Divider()
 
@@ -111,6 +147,232 @@ struct CoreplayCommands: Commands {
                 Text("Off").tag(PlaybackQueue.RepeatMode.off)
                 Text("All").tag(PlaybackQueue.RepeatMode.all)
                 Text("One").tag(PlaybackQueue.RepeatMode.one)
+            }
+        }
+    }
+
+    private var loopTitle: String {
+        switch controller.abLoop.phase {
+        case .off: "Set Loop Start"
+        case .waitingForEnd: "Set Loop End"
+        case .looping: "Stop Looping"
+        }
+    }
+
+    private static func speedLabel(_ rate: Float) -> String {
+        let formatted = rate.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", rate) : String(format: "%g", rate)
+        return "\(formatted)\u{00D7}"
+    }
+
+    // MARK: Audio
+
+    private var audioMenu: some Commands {
+        CommandMenu("Audio") {
+            if !controller.audioTracks.isEmpty {
+                Picker("Audio Track", selection: Binding(
+                    get: { controller.audioTracks.first(where: \.isSelected)?.id },
+                    set: { id in
+                        if let track = controller.audioTracks.first(where: { $0.id == id }) {
+                            controller.selectAudioTrack(track)
+                        }
+                    }
+                )) {
+                    ForEach(controller.audioTracks) { track in
+                        Text(track.displayName()).tag(Optional(track.id))
+                    }
+                }
+                Divider()
+            }
+
+            Button("Volume Up") {
+                controller.setVolume(controller.volume + 0.1)
+            }
+            .keyboardShortcut(.upArrow)
+
+            Button("Volume Down") {
+                controller.setVolume(controller.volume - 0.1)
+            }
+            .keyboardShortcut(.downArrow)
+
+            Button(controller.isMuted ? "Unmute" : "Mute") {
+                controller.setMuted(!controller.isMuted)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+
+            Divider()
+
+            Button("Audio Earlier") {
+                Task { await controller.setAudioDelay(Self.nudged(controller.audioDelay, by: -0.05)) }
+            }
+            .disabled(!hasItem)
+            Button("Audio Later") {
+                Task { await controller.setAudioDelay(Self.nudged(controller.audioDelay, by: 0.05)) }
+            }
+            .disabled(!hasItem)
+            Button("Reset Audio Timing") {
+                Task { await controller.setAudioDelay(0) }
+            }
+            .disabled(controller.audioDelay == 0)
+
+            Divider()
+
+            Picker("Channels", selection: Binding(
+                get: { controller.stereoMode },
+                set: { mode in Task { await controller.setStereoMode(mode) } }
+            )) {
+                ForEach(StereoMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+
+            Toggle("Equalizer", isOn: Binding(
+                get: { controller.equalizer.isEnabled },
+                set: { isOn in
+                    var settings = controller.equalizer
+                    settings.isEnabled = isOn
+                    Task { await session.setEqualizer(settings) }
+                }
+            ))
+        }
+    }
+
+    private static func nudged(_ value: TimeInterval, by amount: TimeInterval) -> TimeInterval {
+        ((value + amount) * 100).rounded() / 100
+    }
+
+    // MARK: Video
+
+    private var videoMenu: some Commands {
+        CommandMenu("Video") {
+            Picker("Size", selection: Binding(
+                get: { controller.fillMode },
+                set: { controller.setFillMode($0) }
+            )) {
+                ForEach(VideoFillMode.allCases, id: \.self) { mode in
+                    Text(mode == .fit ? "Fit to Window" : "Fill Window").tag(mode)
+                }
+            }
+            .disabled(!hasVideo)
+
+            Picker("Shape", selection: Binding(
+                get: { controller.aspectRatio },
+                set: { ratio in Task { await controller.setAspectRatio(ratio) } }
+            )) {
+                Text("Original").tag(VideoRatio?.none)
+                ForEach(VideoRatio.aspectPresets) { ratio in
+                    Text(ratio.title).tag(Optional(ratio))
+                }
+            }
+            .disabled(!hasVideo)
+
+            Picker("Crop", selection: Binding(
+                get: { controller.cropRatio },
+                set: { ratio in Task { await controller.setCropRatio(ratio) } }
+            )) {
+                Text("None").tag(VideoRatio?.none)
+                ForEach(VideoRatio.cropPresets) { ratio in
+                    Text(ratio.title).tag(Optional(ratio))
+                }
+            }
+            .disabled(!hasVideo)
+
+            Picker("Deinterlacing", selection: Binding(
+                get: { controller.deinterlace },
+                set: { mode in Task { await controller.setDeinterlace(mode) } }
+            )) {
+                ForEach(DeinterlaceMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .disabled(!hasVideo)
+
+            Button("Reset Colours") {
+                Task { await controller.setVideoAdjustments(.neutral) }
+            }
+            .disabled(controller.videoAdjustments.isNeutral)
+
+            Divider()
+
+            Button("Next Frame") {
+                controller.stepFrame(forward: true)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
+            .disabled(!hasVideo)
+
+            Button("Previous Frame") {
+                controller.stepFrame(forward: false)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
+            .disabled(!hasVideo)
+
+            Button("Save Picture to Pictures Folder") {
+                model.saveSnapshot()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(!hasVideo)
+
+            Divider()
+
+            Button(controller.pictureInPicture.isActive ? "Exit Picture in Picture" : "Enter Picture in Picture") {
+                controller.pictureInPicture.toggle()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .control])
+            .disabled(!controller.pictureInPicture.isPossible && !controller.pictureInPicture.isActive)
+
+            Toggle("Float on Top", isOn: Binding(
+                get: { model.isFloatingOnTop },
+                set: { model.setFloatingOnTop($0) }
+            ))
+        }
+    }
+
+    // MARK: Subtitles
+
+    private var subtitlesMenu: some Commands {
+        CommandMenu("Subtitles") {
+            Picker("Subtitles", selection: Binding(
+                get: { controller.subtitleTracks.first(where: \.isSelected)?.id },
+                set: { id in
+                    controller.selectSubtitleTrack(controller.subtitleTracks.first(where: { $0.id == id }))
+                }
+            )) {
+                Text("Off").tag(String?.none)
+                ForEach(controller.subtitleTracks) { track in
+                    Text(track.displayName()).tag(Optional(track.id))
+                }
+            }
+            .pickerStyle(.inline)
+            .disabled(!hasVideo)
+
+            Button("Add Subtitle File\u{2026}") {
+                model.presentSubtitlePanel()
+            }
+            .disabled(!hasVideo)
+
+            Divider()
+
+            Button("Subtitles Earlier") {
+                Task { await controller.setSubtitleDelay(Self.nudged(controller.subtitleDelay, by: -0.1)) }
+            }
+            .disabled(!hasVideo)
+            Button("Subtitles Later") {
+                Task { await controller.setSubtitleDelay(Self.nudged(controller.subtitleDelay, by: 0.1)) }
+            }
+            .disabled(!hasVideo)
+            Button("Reset Subtitle Timing") {
+                Task { await controller.setSubtitleDelay(0) }
+            }
+            .disabled(controller.subtitleDelay == 0)
+
+            Divider()
+
+            Picker("Text Size", selection: Binding(
+                get: { controller.subtitleSize },
+                set: { size in Task { await session.setSubtitleSize(size) } }
+            )) {
+                ForEach(SubtitleSize.allCases, id: \.self) { size in
+                    Text(size.title).tag(size)
+                }
             }
         }
     }

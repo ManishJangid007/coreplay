@@ -33,6 +33,8 @@ public struct EngineRouter: Sendable {
         case nativelySupported
         /// The user switched engines from the player (or a feature needed VLC).
         case handoff
+        /// The equalizer is on, and only VLC has one.
+        case equalizer
 
         /// Plain-language explanation for the Media Info panel.
         public var explanation: String {
@@ -51,6 +53,7 @@ public struct EngineRouter: Sendable {
             case .probeFailed: "Apple's frameworks couldn't open this file"
             case .nativelySupported: "Every track is natively supported"
             case .handoff: "Switched engines during playback"
+            case .equalizer: "The equalizer is on"
             }
         }
     }

@@ -27,6 +27,10 @@ struct MacRootView: View {
         model.isPlayerPresented && model.session.hasItem
     }
 
+    private var videoIsPlaying: Bool {
+        model.session.controller.isPlaying && model.session.controller.hasVideo
+    }
+
     var body: some View {
         ZStack {
             NavigationSplitView {
@@ -94,6 +98,9 @@ struct MacRootView: View {
             if !hasItem {
                 model.isPlayerPresented = false
             }
+        }
+        .onChange(of: videoIsPlaying, initial: true) { _, isPlaying in
+            model.updateDisplaySleep(videoIsPlaying: isPlaying)
         }
         .alert("Can\u{2019}t Open", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}

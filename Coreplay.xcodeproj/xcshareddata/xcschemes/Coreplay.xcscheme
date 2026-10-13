@@ -70,6 +70,16 @@
                ReferencedContainer = "container:Packages/MediaLibrary">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "PlayerFeatureTests"
+               BuildableName = "PlayerFeatureTests"
+               BlueprintName = "PlayerFeatureTests"
+               ReferencedContainer = "container:Packages/Features">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

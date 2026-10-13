@@ -145,12 +145,18 @@ public struct PlaybackBar: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
-                Image(systemName: "speaker.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Slider(value: volumeBinding, in: 0...1)
+                Button {
+                    controller.setMuted(!controller.isMuted)
+                } label: {
+                    Image(systemName: controller.isMuted ? "speaker.slash.fill" : "speaker.fill")
+                        .frame(width: 18)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help(controller.isMuted ? "Unmute" : "Mute")
+                .accessibilityLabel(Text(controller.isMuted ? "Unmute" : "Mute"))
+                CapsuleSlider(value: volumeBinding, in: 0...1, appearance: .standard, label: "Volume", step: 0.1)
                     .frame(width: 110)
-                    .accessibilityLabel(Text("Volume"))
             }
 
             RoutePickerView()

@@ -107,7 +107,9 @@ final class VideoFolderCache: @unchecked Sendable {
 extension LibraryIndexer {
     /// Bump when `VideoProbe` or the name parser learn something that
     /// existing files should be read again for.
-    static let videoProbeVersion = 1
+    /// Bumped when parsing learns something new, so unchanged videos are read
+    /// again on the next scan. 2: local artwork is remembered (Milestone 5).
+    static let videoProbeVersion = 2
 
     /// Reads everything about a video file (off the actor).
     static func parseVideo(_ file: FoundFile, source: ByteSource?, hint: VideoContentHint, artworkStore: ArtworkStore, folders: VideoFolderCache) -> ParsedVideo {
@@ -271,7 +273,7 @@ extension LibraryIndexer {
         if video.kind == .homeVideo {
             video.matchState = .local
         }
-        let isLookedUp = video.matchState == .matched || video.matchState == .manual
+        let isLookedUp = video.matchState == .matched || video.matchState == .manual || video.matchState == .keyless
 
         if unedited(.title) {
             if let title = nfo?.title {
@@ -333,9 +335,12 @@ extension LibraryIndexer {
             }
             video.imdbID = video.imdbID ?? nfo.imdbID
         }
+        // Local artwork beats a frame and the free sources' small posters; it
+        // never replaces the user's choice.
+        if parsed.posterKey != nil || parsed.stillKey != nil {
+            local.insert(VideoField.artwork.rawValue)
+        }
         video.localFields = local.sorted()
-
-        // Local artwork beats a frame; it never replaces the user's choice.
         if let key = parsed.posterKey { video.posterKey = key }
         if let key = parsed.backdropKey { video.backdropKey = key }
         if let key = parsed.stillKey { video.stillKey = key }

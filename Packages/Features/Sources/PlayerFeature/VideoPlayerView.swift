@@ -9,18 +9,23 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
-/// The video player: chrome-free by default; tap (or move the pointer) to
-/// reveal title, scrubber, transport and the audio/subtitle/speed menus.
-/// Controls hide after three seconds of playback.
+/// The video player, in the style of the TV app on iOS 26: chrome-free by
+/// default; tap (or move the pointer) to show round glass buttons along the
+/// top, plain transport in the middle, and the title, scrubber (with frame
+/// previews) and audio, speed and options buttons along the bottom. Controls
+/// hide after three seconds of playback. Every other option opens in a panel
+/// over the video, so nothing leaves the player.
 public struct VideoPlayerView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
     @State private var showsOptions = false
-    @State private var importsSubtitleAfterOptions = false
     @State private var isImportingSubtitle = false
-    @State private var subtitleError: String?
+    @State private var errorMessage: String?
+    @State private var toast: String?
+    @State private var toastTask: Task<Void, Never>?
+    @State private var pinchScale: CGFloat = 1
     @FocusState private var hasKeyboardFocus: Bool
 
     private let onClose: () -> Void
@@ -42,22 +47,46 @@ public struct VideoPlayerView: View {
 
             VideoSurface(controller: controller)
                 .ignoresSafeArea()
+                .scaleEffect(pinchScale)
+
+            if controller.isExternalPlaybackActive {
+                externalPlaybackPlaceholder
+            }
 
             statusOverlay
 
-            if controlsVisible {
+            if controlsVisible, !showsOptions {
                 controlsOverlay
                     .transition(.opacity)
+            }
+
+            if showsOptions {
+                optionsLayer
+            }
+
+            if let toast {
+                PlayerToast(message: toast)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, topInset + 56)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .allowsHitTesting(false)
             }
         }
         .contentShape(Rectangle())
         .onTapGesture {
             hasKeyboardFocus = true
-            toggleControls()
+            if showsOptions {
+                closeOptions()
+            } else {
+                toggleControls()
+            }
         }
+        #if os(iOS)
+        .gesture(pinchGesture)
+        #endif
         #if os(macOS)
         .onContinuousHover { phase in
-            if case .active = phase {
+            if case .active = phase, !showsOptions {
                 showControls()
             }
         }
@@ -75,6 +104,7 @@ public struct VideoPlayerView: View {
         }
         .onDisappear {
             hideTask?.cancel()
+            toastTask?.cancel()
         }
         .onChange(of: controller.isPlaying) { _, isPlaying in
             if isPlaying {
@@ -90,12 +120,19 @@ public struct VideoPlayerView: View {
                 scheduleAutoHide()
             }
         }
+        .onChange(of: session.announcement) { _, announcement in
+            if let announcement {
+                showToast(announcement.message)
+            }
+        }
         // At the end of the last video, go back to where it was started from.
         .onChange(of: controller.state) { _, state in
             if state == .ended, controller.hasVideo, !session.queue.hasNext {
                 close()
             }
         }
+        .animation(Motion.respecting(reduceMotion, Motion.standard), value: showsOptions)
+        .animation(Motion.respecting(reduceMotion, Motion.quick), value: toast)
         #if os(iOS)
         .preferredColorScheme(.dark)
         .statusBarHidden(!controlsVisible)
@@ -103,24 +140,21 @@ public struct VideoPlayerView: View {
         #else
         .environment(\.colorScheme, .dark)
         #endif
-        .sheet(isPresented: $showsOptions, onDismiss: optionsDismissed) {
-            PlaybackOptionsView(onAddSubtitleFile: { importsSubtitleAfterOptions = true })
-                .environment(session)
-        }
         .fileImporter(isPresented: $isImportingSubtitle, allowedContentTypes: [.data]) { result in
             guard case .success(let url) = result else { return }
             Task {
                 do {
                     try await controller.addExternalSubtitle(url: url)
+                    showToast("Subtitles Added")
                 } catch {
-                    subtitleError = error.localizedDescription
+                    errorMessage = error.localizedDescription
                 }
             }
         }
-        .alert("Couldn\u{2019}t Add Subtitles", isPresented: Binding(get: { subtitleError != nil }, set: { if !$0 { subtitleError = nil } })) {
+        .alert("Something Went Wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(subtitleError ?? "")
+            Text(errorMessage ?? "")
         }
     }
 
@@ -138,7 +172,7 @@ public struct VideoPlayerView: View {
                     .buttonStyle(.glass)
             }
             .foregroundStyle(.white)
-        } else if isLoading, !controlsVisible {
+        } else if isLoading, !controlsVisible || showsOptions {
             // With controls visible the spinner takes the play button's place instead.
             loadingIndicator
         }
@@ -152,6 +186,21 @@ public struct VideoPlayerView: View {
             .accessibilityLabel(Text("Loading"))
     }
 
+    private var externalPlaybackPlaceholder: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "airplayvideo")
+                .font(.system(size: 56, weight: .light))
+            Text("Playing on AirPlay")
+                .font(.title3.weight(.semibold))
+            Text(controller.displayTitle)
+                .font(.callout)
+                .foregroundStyle(Palette.secondaryOnDark)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .combine)
+    }
+
     private var controlsOverlay: some View {
         VStack(spacing: 0) {
             topBar
@@ -163,80 +212,59 @@ public struct VideoPlayerView: View {
         .foregroundStyle(.white)
         .background {
             VStack {
-                LinearGradient(colors: [.black.opacity(0.65), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 160)
+                LinearGradient(colors: [.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 150)
                 Spacer()
-                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 220)
+                LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 240)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
         }
     }
 
-    private var topBar: some View {
-        HStack(spacing: 12) {
-            Button(action: close) {
-                Image(systemName: closeSymbol)
-                    .font(.headline)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("Close"))
-            #if os(macOS)
-            .help("Back to Library (Esc)")
-            #endif
+    /// Clear of the window's close, minimise and zoom buttons on the Mac.
+    private var topInset: CGFloat {
+        #if os(macOS)
+        34
+        #else
+        8
+        #endif
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(controller.displayTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                if let subtitle = controller.displaySubtitle {
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(Palette.secondaryOnDark)
-                        .lineLimit(1)
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            GlassIconButton(closeTitle, systemImage: closeSymbol, help: "Back to Library (Esc)", action: close)
+
+            if controller.pictureInPicture.isPossible {
+                GlassIconButton("Picture in Picture", systemImage: "pip.enter", help: "Picture in Picture (P)") {
+                    controller.pictureInPicture.start()
                 }
+                .transition(.scale.combined(with: .opacity))
             }
+
             Spacer(minLength: 12)
 
-            RoutePickerView(prioritizesVideoDevices: true)
-                .frame(width: 32, height: 32)
-                .accessibilityLabel(Text("AirPlay"))
-
-            #if os(macOS)
-            Button {
-                NSApp.keyWindow?.toggleFullScreen(nil)
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.headline)
-                    .frame(width: 32, height: 32)
+            GlassControlGroup {
+                AirPlayButton(prioritizesVideoDevices: true)
+                #if os(macOS)
+                VolumeControl(controller: controller)
+                PlayerIconButton("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right", help: "Full Screen (F)") {
+                    toggleFullScreen()
+                }
+                #endif
             }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("Full Screen"))
-            .help("Full Screen (F)")
-            #endif
-
-            Button {
-                hideTask?.cancel()
-                showsOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.headline)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("Playback Options"))
-            #if os(macOS)
-            .help("Audio, Subtitles, Speed and More")
-            #endif
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 18)
+        .padding(.top, topInset)
+        .animation(Motion.quick, value: controller.pictureInPicture.isPossible)
+    }
+
+    private var closeTitle: String {
         #if os(macOS)
-        // Clear of the window's close, minimise and zoom buttons.
-        .padding(.top, 34)
+        "Back to Library"
         #else
-        .padding(.top, 12)
+        "Close"
         #endif
     }
 
@@ -249,24 +277,28 @@ public struct VideoPlayerView: View {
     }
 
     private var centerTransport: some View {
-        HStack(spacing: 44) {
-            TransportButton("Back 10 Seconds", systemImage: "gobackward.10", pointSize: 28) {
+        HStack(spacing: 52) {
+            TransportButton("Back 10 Seconds", systemImage: "gobackward.10", pointSize: 30) {
                 Task { await controller.skip(by: -10) }
                 scheduleAutoHide()
             }
-            if isLoading {
-                loadingIndicator
-            } else {
-                PlayPauseButton(isPlaying: controller.isPlaying, pointSize: 44) {
-                    session.togglePlayPause()
-                    scheduleAutoHide()
+            ZStack {
+                if isLoading {
+                    loadingIndicator
+                } else {
+                    PlayPauseButton(isPlaying: controller.isPlaying, pointSize: 46) {
+                        session.togglePlayPause()
+                        scheduleAutoHide()
+                    }
                 }
             }
-            TransportButton("Forward 10 Seconds", systemImage: "goforward.10", pointSize: 28) {
+            .frame(width: 80, height: 80)
+            TransportButton("Forward 10 Seconds", systemImage: "goforward.10", pointSize: 30) {
                 Task { await controller.skip(by: 10) }
                 scheduleAutoHide()
             }
         }
+        .overVideoShadow()
         .disabled(controller.currentItem == nil)
         // The error view sits in the middle of the screen; keep the transport out of its way.
         .opacity(controller.state.error == nil ? 1 : 0)
@@ -274,26 +306,28 @@ public struct VideoPlayerView: View {
     }
 
     private var bottomBar: some View {
-        VStack(spacing: 10) {
-            ControllerScrubber(controller: controller)
-            HStack(spacing: 20) {
-                if let dimensions = controller.videoDimensions {
-                    Text(dimensions.resolutionBadge)
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.secondaryOnDark, lineWidth: 1))
-                        .foregroundStyle(Palette.secondaryOnDark)
-                        .accessibilityLabel(Text("Resolution \(dimensions.resolutionBadge)"))
-                }
-                Spacer()
-                SpeedMenu(controller: controller)
-                AudioAndSubtitlesMenu(controller: controller) {
-                    hideTask?.cancel()
-                    isImportingSubtitle = true
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .bottom, spacing: 16) {
+                titleBlock
+                Spacer(minLength: 12)
+                GlassControlGroup {
+                    if controller.abLoop.phase != .off {
+                        PlayerIconButton("Stop Looping", systemImage: "repeat.circle.fill", help: "A\u{2013}B Loop (Shift-L)") {
+                            controller.clearABLoop()
+                            showToast("Loop Off")
+                        }
+                    }
+                    SpeedMenu(controller: controller)
+                    AudioAndSubtitlesMenu(controller: controller) {
+                        hideTask?.cancel()
+                        isImportingSubtitle = true
+                    }
+                    PlayerIconButton("More Options", systemImage: "ellipsis", help: "Picture, Sound, Chapters and More") {
+                        openOptions()
+                    }
                 }
             }
-            .font(.title3)
+            ControllerScrubber(controller: controller, showsPreviews: true)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
@@ -301,20 +335,63 @@ public struct VideoPlayerView: View {
         .simultaneousGesture(TapGesture().onEnded { scheduleAutoHide() })
     }
 
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(controller.displayTitle)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+            HStack(spacing: 8) {
+                if let subtitle = controller.displaySubtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .lineLimit(1)
+                }
+                if let dimensions = controller.videoDimensions {
+                    Text(dimensions.resolutionBadge)
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.secondaryOnDark, lineWidth: 1))
+                        .accessibilityLabel(Text("Resolution \(dimensions.resolutionBadge)"))
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(Palette.secondaryOnDark)
+        }
+        .overVideoShadow()
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Options panel
+
+    private var optionsLayer: some View {
+        PlayerOptionsLayer(
+            isVideo: true,
+            topInset: topInset,
+            onClose: closeOptions,
+            onAddSubtitleFile: {
+                closeOptions()
+                isImportingSubtitle = true
+            },
+            onSnapshot: saveSnapshot
+        )
+    }
+
+    private func openOptions() {
+        hideTask?.cancel()
+        showsOptions = true
+    }
+
+    private func closeOptions() {
+        showsOptions = false
+        hasKeyboardFocus = true
+        showControls()
+    }
+
     // MARK: - Behaviour
 
     private func close() {
         hideTask?.cancel()
         onClose()
-    }
-
-    private func optionsDismissed() {
-        if importsSubtitleAfterOptions {
-            importsSubtitleAfterOptions = false
-            isImportingSubtitle = true
-        } else {
-            scheduleAutoHide()
-        }
     }
 
     private func toggleControls() {
@@ -352,23 +429,82 @@ public struct VideoPlayerView: View {
         }
     }
 
-    /// Space plays/pauses, ←/→ skip 10 s. On the Mac, ↑/↓ change volume, F
-    /// toggles full screen and Esc leaves full screen before closing.
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        toast = message
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            toast = nil
+        }
+    }
+
+    private func toggleFullScreen() {
+        #if os(macOS)
+        NSApp.keyWindow?.toggleFullScreen(nil)
+        #endif
+    }
+
+    private func saveSnapshot() {
+        Task {
+            do {
+                let destination = try await SnapshotSaver.save(controller)
+                showToast("Saved to \(destination)")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    #if os(iOS)
+    /// Pinch out to fill the screen, in to fit, as in the TV app.
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                pinchScale = min(max(value.magnification, 0.85), 1.2)
+            }
+            .onEnded { value in
+                withAnimation(Motion.quick) { pinchScale = 1 }
+                if value.magnification > 1.08, controller.fillMode != .fill {
+                    controller.setFillMode(.fill)
+                    showToast("Fill")
+                } else if value.magnification < 0.93, controller.fillMode != .fit {
+                    controller.setFillMode(.fit)
+                    showToast("Fit")
+                }
+            }
+    }
+    #endif
+
+    // MARK: - Keyboard
+
+    /// Space plays and pauses, ←/→ skip 10 s (⌥ for a minute), F toggles
+    /// full screen and Esc steps back (panel, full screen, then the player).
+    /// VLC's keys work too: [ ] and = for speed, , and . for frames, M mute,
+    /// B and V cycle audio and subtitles, G/H subtitle timing, J/K audio
+    /// timing, Shift-L the A–B loop, Shift-S a snapshot, P Picture in Picture.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        let skip: TimeInterval = press.modifiers.contains(.option) ? 60 : 10
         switch press.key {
         case .space:
             session.togglePlayPause()
         case .leftArrow:
-            Task { await controller.skip(by: -10) }
+            Task { await controller.skip(by: -skip) }
         case .rightArrow:
-            Task { await controller.skip(by: 10) }
+            Task { await controller.skip(by: skip) }
         #if os(macOS)
         case .upArrow:
             controller.setVolume(controller.volume + 0.1)
+            showToast("Volume \(Int((controller.volume * 100).rounded()))%")
         case .downArrow:
             controller.setVolume(controller.volume - 0.1)
+            showToast("Volume \(Int((controller.volume * 100).rounded()))%")
         #endif
         case .escape:
+            if showsOptions {
+                closeOptions()
+                return .handled
+            }
             #if os(macOS)
             if let window = NSApp.keyWindow, window.styleMask.contains(.fullScreen) {
                 window.toggleFullScreen(nil)
@@ -378,15 +514,110 @@ public struct VideoPlayerView: View {
             close()
             return .handled
         default:
-            #if os(macOS)
-            if press.characters.lowercased() == "f" {
-                NSApp.keyWindow?.toggleFullScreen(nil)
-                return .handled
-            }
-            #endif
-            return .ignored
+            return handleCharacter(press)
         }
         showControls()
         return .handled
+    }
+
+    private func handleCharacter(_ press: KeyPress) -> KeyPress.Result {
+        let shift = press.modifiers.contains(.shift)
+        guard !press.modifiers.contains(.command) else { return .ignored }
+        switch press.characters.lowercased() {
+        case "f":
+            toggleFullScreen()
+        case "m":
+            controller.setMuted(!controller.isMuted)
+            showToast(controller.isMuted ? "Muted" : "Sound On")
+        case "]", "+":
+            changeSpeed(faster: true)
+        case "[", "-":
+            changeSpeed(faster: false)
+        case "=":
+            Task { await controller.setRate(1) }
+            showToast("Speed 1\u{00D7}")
+        case ".":
+            controller.stepFrame(forward: true)
+        case ",":
+            controller.stepFrame(forward: false)
+        case "b":
+            cycleAudio()
+        case "v":
+            cycleSubtitles()
+        case "g":
+            nudgeSubtitles(by: -0.05)
+        case "h":
+            nudgeSubtitles(by: 0.05)
+        case "j":
+            nudgeAudio(by: -0.05)
+        case "k":
+            nudgeAudio(by: 0.05)
+        case "l" where shift:
+            controller.advanceABLoop()
+            switch controller.abLoop.phase {
+            case .off: showToast("Loop Off")
+            case .waitingForEnd: showToast("Loop Start Set")
+            case .looping: showToast("Looping")
+            }
+        case "s" where shift:
+            saveSnapshot()
+        case "p":
+            controller.pictureInPicture.toggle()
+        case "i":
+            openOptions()
+        default:
+            return .ignored
+        }
+        return .handled
+    }
+
+    private func changeSpeed(faster: Bool) {
+        let rate = PlaybackSpeeds.step(from: controller.rate, faster: faster)
+        Task { await controller.setRate(rate) }
+        showToast("Speed \(PlaybackSpeeds.label(rate))")
+    }
+
+    private func cycleAudio() {
+        let tracks = controller.audioTracks
+        guard tracks.count > 1 else { return }
+        let current = tracks.firstIndex(where: \.isSelected) ?? -1
+        let next = tracks[(current + 1) % tracks.count]
+        controller.selectAudioTrack(next)
+        showToast("Audio: \(next.displayName())")
+    }
+
+    private func cycleSubtitles() {
+        let tracks = controller.subtitleTracks
+        guard !tracks.isEmpty else {
+            showToast("No Subtitles")
+            return
+        }
+        let current = tracks.firstIndex(where: \.isSelected)
+        let nextIndex = current.map { $0 + 1 } ?? 0
+        if nextIndex >= tracks.count {
+            controller.selectSubtitleTrack(nil)
+            showToast("Subtitles Off")
+        } else {
+            controller.selectSubtitleTrack(tracks[nextIndex])
+            showToast("Subtitles: \(tracks[nextIndex].displayName())")
+        }
+    }
+
+    private func nudgeSubtitles(by amount: TimeInterval) {
+        let value = ((controller.subtitleDelay + amount) * 100).rounded() / 100
+        Task { await controller.setSubtitleDelay(value) }
+        showToast("Subtitles \(Self.timing(value))")
+    }
+
+    private func nudgeAudio(by amount: TimeInterval) {
+        let value = ((controller.audioDelay + amount) * 100).rounded() / 100
+        Task { await controller.setAudioDelay(value) }
+        showToast("Audio \(Self.timing(value))")
+    }
+
+    private static func timing(_ value: TimeInterval) -> String {
+        if abs(value) < 0.001 { return "in sync" }
+        let amount = abs(value).formatted(.number.precision(.fractionLength(0...2)))
+        return "\(amount) s \(value > 0 ? "later" : "earlier")"
     }
 }

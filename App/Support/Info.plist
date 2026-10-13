@@ -9,7 +9,7 @@
 	other's keys.
 	-->
 
-	<!-- iOS: keep playing audio in the background. -->
+	<!-- iOS: keep playing audio in the background, and video in Picture in Picture. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
@@ -30,6 +30,10 @@
 		<key>NSAllowsArbitraryLoadsForMedia</key>
 		<true/>
 	</dict>
+
+	<!-- iOS: snapshots from the video player (Save Picture to Photos). Add-only access. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Coreplay saves pictures you take from videos to your photo library.</string>
 
 	<!-- Shown before reaching devices on the local network (streams, cameras, shares). -->
 	<key>NSLocalNetworkUsageDescription</key>

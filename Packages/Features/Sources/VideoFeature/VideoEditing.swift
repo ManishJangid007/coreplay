@@ -135,7 +135,8 @@ struct ShowInfoEditor: View {
 
 // MARK: - Fix Match
 
-/// Searches TMDB and lets the user pick the right movie or show.
+/// Searches TMDB (or, without a key, Wikipedia for movies and TVmaze for
+/// shows) and lets the user pick the right movie or show.
 struct FixMatchView: View {
     enum Target {
         case video(Video)
@@ -168,13 +169,15 @@ struct FixMatchView: View {
                         #if os(iOS)
                         .keyboardType(.numberPad)
                         #endif
-                    Button("Search TMDB") {
+                    Button("Search \(library.lookupSourceName(forShows: target.isShow))") {
                         Task { await search() }
                     }
-                    .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+                    .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty || isSearching || !library.canLookUp)
                 } footer: {
-                    if !library.hasMetadataKey {
-                        Text("Add your TMDB API key in Settings \u{25B8} Metadata to look things up.")
+                    if !library.canLookUp {
+                        Text("Turn on Look Up Without a Key, or add your TMDB API key, in Settings \u{25B8} Metadata.")
+                    } else if !library.hasMetadataKey {
+                        Text("Searching \(library.lookupSourceName(forShows: target.isShow)), which needs no key. A TMDB key in Settings \u{25B8} Metadata gives larger artwork.")
                     }
                 }
                 if let problem {
@@ -233,7 +236,7 @@ struct FixMatchView: View {
 
     private func search() async {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, library.hasMetadataKey else { return }
+        guard !text.isEmpty, library.canLookUp else { return }
         isSearching = true
         problem = nil
         defer { isSearching = false }

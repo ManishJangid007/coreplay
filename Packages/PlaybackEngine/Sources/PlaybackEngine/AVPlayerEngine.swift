@@ -1,6 +1,8 @@
 import AVFoundation
 import Foundation
+import ImageIO
 import PlaybackCore
+import UniformTypeIdentifiers
 
 /// Plays natively supported media with AVPlayer: better battery life, system
 /// HDR handling and AirPlay video. Anything it can't do is handed to VLC by
@@ -24,9 +26,23 @@ final class AVPlayerEngine: PlaybackEngine {
     var audioDelay: TimeInterval = 0
     var subtitleDelay: TimeInterval = 0
 
+    // Level 2 options. Only the fill mode means anything to AVFoundation; the
+    // controller moves an item to VLC before changing the others.
+    var fillMode: VideoFillMode = .fit {
+        didSet { playerLayer?.videoGravity = Self.gravity(for: fillMode) }
+    }
+    var aspectRatio: VideoRatio?
+    var cropRatio: VideoRatio?
+    var videoAdjustments: VideoAdjustments = .neutral
+    var deinterlace: DeinterlaceMode = .automatic
+    var stereoMode: StereoMode = .automatic
+    var equalizer: EqualizerSettings = .flat
+    var subtitleScale: Float = 1
+
     private let continuation: AsyncStream<PlaybackEvent>.Continuation
-    private let player = AVPlayer()
-    private var playerLayer: AVPlayerLayer?
+    let player = AVPlayer()
+    /// The layer showing the video; Picture in Picture is built on it.
+    private(set) var playerLayer: AVPlayerLayer?
     private var playerItem: AVPlayerItem?
     private var asset: AVURLAsset?
     private var audibleGroup: AVMediaSelectionGroup?
@@ -180,10 +196,56 @@ final class AVPlayerEngine: PlaybackEngine {
             return
         }
         let layer = playerLayer ?? AVPlayerLayer(player: player)
-        layer.videoGravity = .resizeAspect
+        layer.videoGravity = Self.gravity(for: fillMode)
         layer.backgroundColor = CGColor(gray: 0, alpha: 1)
         playerLayer = layer
         view.managedLayer = layer
+    }
+
+    // MARK: - Navigation
+
+    func stepFrame(forward: Bool) {
+        guard let playerItem else { return }
+        wantsToPlay = false
+        player.pause()
+        guard forward ? playerItem.canStepForward : playerItem.canStepBackward else { return }
+        playerItem.step(byCount: forward ? 1 : -1)
+        let itemID = ObjectIdentifier(playerItem)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(60))
+            guard let self, self.isCurrent(itemID) else { return }
+            self.continuation.yield(.timeChanged(self.currentTime))
+        }
+    }
+
+    /// The exact frame at the current position, at full size.
+    func saveSnapshot(to url: URL) async throws {
+        guard let asset else {
+            throw PlaybackError(.engineFailure, "There\u{2019}s no picture to save.")
+        }
+        try await Self.writeFrame(of: asset, at: player.currentTime(), to: url)
+    }
+
+    private nonisolated static func writeFrame(of asset: AVURLAsset, at time: CMTime, to url: URL) async throws {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let (image, _) = try await generator.image(at: time)
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw PlaybackError(.engineFailure, "Couldn\u{2019}t save the picture.")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw PlaybackError(.engineFailure, "Couldn\u{2019}t save the picture.")
+        }
+    }
+
+    private static func gravity(for mode: VideoFillMode) -> AVLayerVideoGravity {
+        switch mode {
+        case .fit: .resizeAspect
+        case .fill: .resizeAspectFill
+        }
     }
 
     // MARK: - Shutdown
@@ -215,6 +277,14 @@ final class AVPlayerEngine: PlaybackEngine {
                 let status = player.timeControlStatus
                 Task { @MainActor [weak self] in
                     self?.handleTimeControlStatus(status)
+                }
+            }
+        )
+        playerObservations.append(
+            player.observe(\.isExternalPlaybackActive, options: [.new]) { @Sendable [weak self] player, _ in
+                let isActive = player.isExternalPlaybackActive
+                Task { @MainActor [weak self] in
+                    self?.continuation.yield(.externalPlaybackChanged(isActive))
                 }
             }
         )

@@ -4,6 +4,7 @@ import NowPlaying
 import Observation
 import PlaybackCore
 import PlaybackEngine
+import PlayerFeature
 import SettingsFeature
 import UniformTypeIdentifiers
 
@@ -37,6 +38,10 @@ final class AppModel {
     var openErrorMessage: String?
 
     @ObservationIgnored private var listeningTask: Task<Void, Never>?
+    #if os(macOS)
+    /// Keeps the display awake while a video plays.
+    @ObservationIgnored private var displayActivity: (any NSObjectProtocol)?
+    #endif
 
     init() {
         let settings = AppSettings()
@@ -48,6 +53,29 @@ final class AppModel {
         settings.onEngineConfigurationChange = { configuration in
             session.updateConfiguration(configuration)
         }
+        connectPictureInPicture()
+    }
+
+    // MARK: Picture in Picture
+
+    /// The full player steps aside while the video floats, and comes back
+    /// when the user returns from the Picture in Picture window.
+    private func connectPictureInPicture() {
+        let pictureInPicture = session.controller.pictureInPicture
+        pictureInPicture.onStart = { [weak self] in
+            self?.isPlayerPresented = false
+        }
+        pictureInPicture.onRestore = { [weak self] in
+            guard let self else { return }
+            self.isPlayerPresented = true
+            // Give the player a moment to appear before the video leaves the floating window.
+            try? await Task.sleep(for: .milliseconds(350))
+        }
+    }
+
+    /// `true` while the video plays in a Picture in Picture window.
+    var isInPictureInPicture: Bool {
+        session.controller.pictureInPicture.isActive
     }
 
     // MARK: Library
@@ -176,16 +204,38 @@ final class AppModel {
         #if os(macOS)
         if expectingVideo == false { return }
         #endif
+        if isInPictureInPicture {
+            // Bring the video back from its floating window; the restore
+            // callback presents the player.
+            session.controller.pictureInPicture.stop()
+            return
+        }
         isPlayerPresented = true
     }
 
-    /// Closes the full player. Video pauses, as in the TV app; audio plays on.
+    /// Closes the full player. Video pauses, as in the TV app (unless it's
+    /// floating in Picture in Picture); audio plays on.
     func dismissPlayer() {
-        if session.controller.hasVideo {
+        if session.controller.hasVideo, !isInPictureInPicture {
             session.pause()
         }
         isPlayerPresented = false
     }
+
+    #if os(macOS)
+    /// Video keeps the display awake while it plays, as in QuickTime.
+    func updateDisplaySleep(videoIsPlaying: Bool) {
+        if videoIsPlaying, displayActivity == nil {
+            displayActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.idleDisplaySleepDisabled, .userInitiated],
+                reason: "Playing video"
+            )
+        } else if !videoIsPlaying, let activity = displayActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            displayActivity = nil
+        }
+    }
+    #endif
 
     #if os(macOS)
     /// File ▸ Add Folder to Library… (⇧⌘O).
@@ -211,6 +261,68 @@ final class AppModel {
         }
         if !files.isEmpty {
             open(files, securityScoped: false)
+        }
+    }
+
+    /// Playback ▸ Jump to Time… (⌘J).
+    func presentJumpToTime() {
+        let controller = session.controller
+        let alert = NSAlert()
+        alert.messageText = "Jump to Time"
+        alert.informativeText = "Type a time such as 1:02:03 or 45:10."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.placeholderString = PlaybackTimeFormatter.string(from: controller.currentTime, referenceDuration: controller.duration)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard let seconds = PlaybackTimeFormatter.seconds(from: field.stringValue) else {
+            NSSound.beep()
+            return
+        }
+        let target = min(seconds, controller.duration ?? seconds)
+        Task { await session.seek(to: target) }
+    }
+
+    /// Video ▸ Save Picture to Pictures Folder (⌥⌘S).
+    func saveSnapshot() {
+        Task {
+            do {
+                let destination = try await SnapshotSaver.save(session.controller)
+                session.announce("Saved to \(destination)")
+            } catch {
+                openErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Subtitles ▸ Add Subtitle File…
+    func presentSubtitlePanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Add Subtitles"
+        panel.prompt = "Add"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do {
+                try await session.controller.addExternalSubtitle(url: url)
+                session.announce("Subtitles Added")
+            } catch {
+                openErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Video ▸ Float on Top: the main window stays above other apps' windows.
+    private(set) var isFloatingOnTop = false
+
+    func setFloatingOnTop(_ floats: Bool) {
+        isFloatingOnTop = floats
+        for window in NSApp.windows where window.identifier?.rawValue.hasPrefix("main") == true || window.isMainWindow {
+            window.level = floats ? .floating : .normal
         }
     }
 

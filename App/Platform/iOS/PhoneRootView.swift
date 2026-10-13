@@ -141,9 +141,10 @@ struct PhoneRootView: View {
         )
     }
 
-    /// Video keeps the screen on while it plays.
+    /// Video keeps the screen on while it plays (not while it floats in
+    /// Picture in Picture, when the rest of the phone is in use).
     private var keepsScreenAwake: Bool {
-        model.session.controller.isPlaying && model.session.controller.hasVideo
+        model.session.controller.isPlaying && model.session.controller.hasVideo && !model.isInPictureInPicture
     }
 
     private var errorBinding: Binding<Bool> {
@@ -155,9 +156,10 @@ struct PhoneRootView: View {
     }
 
     /// Every way the player closes (button, Esc, the zoom swipe or pinch):
-    /// video pauses, as in the TV app; audio keeps playing.
+    /// video pauses, as in the TV app, unless it moved into Picture in
+    /// Picture; audio keeps playing.
     private func pauseVideoIfNeeded() {
-        if model.session.controller.hasVideo {
+        if model.session.controller.hasVideo, !model.isInPictureInPicture {
             model.session.pause()
         }
     }

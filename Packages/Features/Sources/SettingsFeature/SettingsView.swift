@@ -68,7 +68,8 @@ private struct PlaybackSettingsSection: View {
     }
 }
 
-/// The user's TMDB key, for posters, synopses, cast and episode titles.
+/// The user's TMDB key, for posters, synopses, cast and episode titles, and
+/// the free sources used without one.
 private struct MetadataSettingsSection: View {
     @Environment(LibraryManager.self) private var library
     @State private var key = ""
@@ -115,6 +116,24 @@ private struct MetadataSettingsSection: View {
             Text("Movie and TV Details")
         } footer: {
             Text("Coreplay names movies and episodes from their files and any .nfo files beside them. With your own TMDB key it also fetches posters, backdrops, synopses, cast and episode titles. Only titles and years are sent, and the key stays in your Keychain. This product uses the TMDB API but is not endorsed or certified by TMDB.")
+        }
+
+        Section {
+            Toggle("Look Up Without a Key", isOn: Binding(
+                get: { library.usesFreeMetadataSources },
+                set: { library.setUsesFreeMetadataSources($0) }
+            ))
+            if library.usesFreeMetadataSources, !library.hasMetadataKey {
+                Button("Look Up Unmatched Titles Again") {
+                    library.lookUpUnmatchedAgain()
+                }
+            }
+            Link("TV details from TVmaze", destination: URL(string: "https://www.tvmaze.com")!)
+            Link("Movie details from Wikipedia", destination: URL(string: "https://en.wikipedia.org")!)
+        } header: {
+            Text("Free Sources")
+        } footer: {
+            Text("Without a TMDB key, Coreplay gets show posters, episode titles and stills from TVmaze, and movie posters and synopses from Wikipedia. Neither needs an account. Wikipedia\u{2019}s posters are small, so a TMDB key gives sharper artwork; once you add one, TMDB takes over. Only titles and years are sent. TVmaze and Wikipedia text is shared under CC BY-SA 4.0.")
         }
     }
 

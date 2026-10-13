@@ -96,6 +96,26 @@ struct MediaTrackTests {
         #expect(forced.displayName(locale: english) == "French (Forced)")
     }
 
+    @Test func keepsTheTracksOwnTitle() {
+        let commentary = MediaTrack(id: "6", kind: .audio, name: "English (Commentary)", languageCode: "en", channelCount: 2)
+        #expect(commentary.displayName(locale: english) == "English \u{00B7} Commentary \u{00B7} Stereo")
+        // VLC: "<title> - [<language>]".
+        let vlc = MediaTrack(id: "7", kind: .audio, name: "Director's Commentary - [English]", languageCode: "eng")
+        #expect(vlc.displayName(locale: english) == "English \u{00B7} Director's Commentary")
+        // Names that only repeat the language, flags, channels or codec add nothing.
+        let repeated = MediaTrack(id: "8", kind: .audio, name: "English 5.1 Surround", languageCode: "en", channelCount: 6)
+        #expect(repeated.displayName(locale: english) == "English \u{00B7} 5.1")
+        let code = MediaTrack(id: "9", kind: .subtitle, name: "eng", languageCode: "eng")
+        #expect(code.displayName(locale: english) == "English")
+        let codec = MediaTrack(id: "10", kind: .audio, name: "AAC", languageCode: "en", codec: "AAC", channelCount: 2)
+        #expect(codec.displayName(locale: english) == "English \u{00B7} Stereo")
+        let generic = MediaTrack(id: "11", kind: .audio, name: "Audio 2 [English]", languageCode: "en")
+        #expect(generic.displayName(locale: english) == "English")
+        // The language in English is removed under any locale.
+        let french = Locale(identifier: "fr_FR")
+        #expect(MediaTrack(id: "12", kind: .audio, name: "Track 1 - [English]", languageCode: "en").displayName(locale: french) == "Anglais")
+    }
+
     @Test func fallsBackToCleanedEngineNames() {
         let track = MediaTrack(id: "4", kind: .audio, name: "Track 2 - Director's Commentary [und]", languageCode: "und")
         #expect(track.displayName(locale: english) == "Director's Commentary")

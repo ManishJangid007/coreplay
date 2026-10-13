@@ -144,7 +144,7 @@ extension LibraryIndexer {
             }
             video.editedFields = edited.sorted()
             grouper.attach(video, showTitle: video.showTitle, showYear: video.show?.year)
-            if video.matchState != .local, video.show?.matchState == .matched || video.show?.matchState == .manual {
+            if video.matchState != .local, let state = video.show?.matchState, state == .matched || state == .manual || state == .keyless {
                 video.matchState = .pending // new numbers: fetch that episode's details
             }
         } else {

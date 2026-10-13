@@ -19,7 +19,8 @@ enum TMDBImageSize {
 
 /// Details for a movie, ready to apply.
 struct MovieDetails: Sendable {
-    var tmdbID: Int
+    /// `nil` when the details came from the free sources.
+    var tmdbID: Int?
     var imdbID: String?
     var title: String
     var originalTitle: String?
@@ -57,7 +58,8 @@ struct SeasonDetails: Sendable {
 }
 
 struct ShowDetails: Sendable {
-    var tmdbID: Int
+    /// `nil` when the details came from the free sources.
+    var tmdbID: Int?
     var title: String
     var year: Int?
     var overview: String?
@@ -84,11 +86,27 @@ struct LookupQuery: Sendable {
 
 /// What a TMDB search offers in Fix Match.
 public struct LookupResult: Identifiable, Sendable, Hashable {
+    /// Where a result came from; its `id` belongs to that source.
+    public enum Source: String, Sendable, Hashable {
+        case tmdb
+        case wikipedia
+        case tvmaze
+
+        public var name: String {
+            switch self {
+            case .tmdb: "TMDB"
+            case .wikipedia: "Wikipedia"
+            case .tvmaze: "TVmaze"
+            }
+        }
+    }
+
     public var id: Int
     public var title: String
     public var year: Int?
     public var overview: String?
     public var posterURL: URL?
+    public var source: Source = .tmdb
 }
 
 enum LookupFetcher {
@@ -241,16 +259,22 @@ extension LibraryIndexer {
     /// right now (bad key, offline, rate limited); waiting items stay waiting.
     public func lookUpPending(client: TMDBClient, artworkStore: ArtworkStore, batchSize: Int = 8) async throws -> Int {
         let pending = MatchState.pending.rawValue
+        // Matches from the free sources are looked up again: TMDB has more.
+        let keyless = MatchState.keyless.rawValue
         let movieKind = VideoKind.movie.rawValue
         let episodeKind = VideoKind.episode.rawValue
 
-        var movieDescriptor = FetchDescriptor<Video>(predicate: #Predicate { $0.matchStateRaw == pending && $0.kindRaw == movieKind })
+        var movieDescriptor = FetchDescriptor<Video>(predicate: #Predicate<Video> { video in
+            (video.matchStateRaw == pending || video.matchStateRaw == keyless) && video.kindRaw == movieKind
+        })
         movieDescriptor.fetchLimit = batchSize
         let movieQueries = try modelContext.fetch(movieDescriptor).map {
             LookupQuery(id: $0.id, title: $0.title.isEmpty ? $0.displayTitle : $0.title, year: $0.year, tmdbID: $0.tmdbID, imdbID: $0.imdbID)
         }
 
-        var showDescriptor = FetchDescriptor<TVShow>(predicate: #Predicate { $0.matchStateRaw == pending })
+        var showDescriptor = FetchDescriptor<TVShow>(predicate: #Predicate<TVShow> { show in
+            show.matchStateRaw == pending || show.matchStateRaw == keyless
+        })
         showDescriptor.fetchLimit = max(2, batchSize / 2)
         let showQueries = try modelContext.fetch(showDescriptor).map { show in
             LookupQuery(id: show.id, title: show.title, year: show.year, tmdbID: show.tmdbID, imdbID: show.imdbID, seasons: Self.seasonMap(show.episodes))
@@ -274,7 +298,7 @@ extension LibraryIndexer {
             case .notFound, .local:
                 episode.matchState = show.matchState
                 settled += 1
-            case .pending:
+            case .pending, .keyless:
                 break // looked up with its show
             }
         }
@@ -427,9 +451,12 @@ extension LibraryIndexer {
         let edited = Set(video.editedFields)
         let local = state == .manual ? Set<String>() : Set(video.localFields)
         func free(_ field: VideoField) -> Bool { !edited.contains(field.rawValue) && !local.contains(field.rawValue) }
+        // TMDB's artwork replaces the free sources' small posters, but never local files.
+        let replacesArtwork = state == .manual
+            || (video.matchState == .keyless && state != .keyless && !video.localFields.contains(VideoField.artwork.rawValue))
 
         video.matchState = state
-        video.tmdbID = details.tmdbID
+        video.tmdbID = details.tmdbID ?? video.tmdbID
         video.imdbID = details.imdbID ?? video.imdbID
         if free(.title) {
             video.title = details.title
@@ -447,17 +474,19 @@ extension LibraryIndexer {
         video.rating = details.rating ?? video.rating
         if !details.directors.isEmpty { video.directors = details.directors }
         video.studio = details.studio ?? video.studio
-        if let key = details.posterKey, video.posterKey == nil || state == .manual { video.posterKey = key }
-        if let key = details.backdropKey, video.backdropKey == nil || state == .manual { video.backdropKey = key }
+        if let key = details.posterKey, video.posterKey == nil || replacesArtwork { video.posterKey = key }
+        if let key = details.backdropKey, video.backdropKey == nil || replacesArtwork { video.backdropKey = key }
     }
 
     static func apply(_ details: ShowDetails, to show: TVShow, state: MatchState, context: ModelContext) {
         let edited = Set(show.editedFields)
         let local = state == .manual ? Set<String>() : Set(show.localFields)
         func free(_ field: VideoField) -> Bool { !edited.contains(field.rawValue) && !local.contains(field.rawValue) }
+        let replacesArtwork = state == .manual
+            || (show.matchState == .keyless && state != .keyless && !show.localFields.contains(VideoField.artwork.rawValue))
 
         show.matchState = state
-        show.tmdbID = details.tmdbID
+        show.tmdbID = details.tmdbID ?? show.tmdbID
         if free(.title) {
             show.title = details.title
             show.sortTitle = NameNormalizer.sortKey(details.title)
@@ -469,13 +498,13 @@ extension LibraryIndexer {
         show.contentRating = details.contentRating ?? show.contentRating
         show.network = details.network ?? show.network
         show.rating = details.rating ?? show.rating
-        if let key = details.posterKey, show.posterKey == nil || state == .manual { show.posterKey = key }
-        if let key = details.backdropKey, show.backdropKey == nil || state == .manual { show.backdropKey = key }
+        if let key = details.posterKey, show.posterKey == nil || replacesArtwork { show.posterKey = key }
+        if let key = details.backdropKey, show.backdropKey == nil || replacesArtwork { show.backdropKey = key }
         for episode in show.episodes where episode.showTitle != show.title {
             episode.showTitle = show.title
         }
         for season in details.seasons.values {
-            _ = apply(season, toEpisodesOf: show, context: context, state: state)
+            _ = apply(season, toEpisodesOf: show, context: context, state: state, replacesArtwork: replacesArtwork)
         }
         for episode in show.episodes where episode.matchState == .pending {
             // Not in TMDB's listing (or numbered differently): names stay.
@@ -485,12 +514,13 @@ extension LibraryIndexer {
 
     /// Season details onto the show's season and its episodes; returns how many episodes it settled.
     @discardableResult
-    static func apply(_ details: SeasonDetails, toEpisodesOf show: TVShow, context: ModelContext, state: MatchState = .matched) -> Int {
+    static func apply(_ details: SeasonDetails, toEpisodesOf show: TVShow, context: ModelContext, state: MatchState = .matched, replacesArtwork: Bool = false) -> Int {
+        let replaces = replacesArtwork || state == .manual
         if let season = show.seasons.first(where: { $0.number == details.number }) {
             if let title = details.title { season.title = title }
             season.overview = details.overview ?? season.overview
             season.year = details.year ?? season.year
-            if let key = details.posterKey, season.posterKey == nil || state == .manual { season.posterKey = key }
+            if let key = details.posterKey, season.posterKey == nil || replaces { season.posterKey = key }
         }
         var settled = 0
         for episode in show.episodes where episode.seasonNumber == details.number {
@@ -512,7 +542,9 @@ extension LibraryIndexer {
                 episode.year = Int(date.prefix(4))
             }
             if free(.runtime), let runtime = info.runtime { episode.runtime = runtime }
-            if let key = info.stillKey, episode.stillKey == nil || state == .manual { episode.stillKey = key }
+            if let key = info.stillKey, episode.stillKey == nil || (replaces && !episode.localFields.contains(VideoField.artwork.rawValue)) {
+                episode.stillKey = key
+            }
             episode.tmdbID = info.tmdbID ?? episode.tmdbID
             episode.matchState = state
             episode.lastMatchAttempt = .now

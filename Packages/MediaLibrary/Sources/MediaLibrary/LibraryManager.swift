@@ -13,7 +13,7 @@ import UIKit
 /// models with `@Query` from `container`; this object does everything else.
 ///
 /// All background work runs one job at a time on `LibraryIndexer` (its own
-/// model context): scans, removals, TMDB lookups and frame grabs. Videos,
+/// model context): scans, removals, lookups and frame grabs. Videos,
 /// shows and seasons are only ever written there, so the main context never
 /// races it; play history (`PlaybackRecord`) is only written here.
 @MainActor
@@ -22,7 +22,7 @@ public final class LibraryManager {
     public enum Activity: Equatable, Sendable {
         case idle
         case scanning(sourceID: UUID, sourceName: String, processed: Int, total: Int)
-        /// Fetching details and artwork from TMDB.
+        /// Fetching details and artwork (TMDB, or TVmaze and Wikipedia).
         case lookingUp
     }
 
@@ -63,6 +63,9 @@ public final class LibraryManager {
     public internal(set) var watchStates: [String: WatchState] = [:]
     /// Whether a TMDB key is set (Settings ▸ Metadata).
     public internal(set) var hasMetadataKey = false
+    /// Without a TMDB key, look videos up on TVmaze (shows) and Wikipedia
+    /// (movies), which need no key. On unless turned off in Settings.
+    public internal(set) var usesFreeMetadataSources = false
     /// The last lookup problem (a rejected key, no connection), for Settings.
     public internal(set) var metadataProblem: String?
     /// Grabs frames for video artwork; set by the app (it lives in PlaybackEngine).
@@ -102,6 +105,7 @@ public final class LibraryManager {
         if !inMemory {
             metadataKey = MetadataKeyStore.load()
             hasMetadataKey = metadataKey != nil
+            usesFreeMetadataSources = UserDefaults.standard.object(forKey: Self.freeSourcesKey) as? Bool ?? true
         }
     }
 
@@ -415,10 +419,18 @@ public final class LibraryManager {
         revision += 1
     }
 
-    /// One batch of TMDB lookups; queues another while there's more to do,
-    /// behind any scans that arrived meanwhile.
+    static let freeSourcesKey = "metadata.usesFreeSources"
+
+    /// One batch of lookups (TMDB with a key, otherwise TVmaze and
+    /// Wikipedia); queues another while there's more to do, behind any
+    /// scans that arrived meanwhile.
     private func lookUpBatch() async {
-        guard let key = metadataKey else { return }
+        guard let key = metadataKey else {
+            if usesFreeMetadataSources {
+                await keylessLookUpBatch()
+            }
+            return
+        }
         let client = TMDBClient(key: key)
         let indexer = await indexer()
         activity = .lookingUp
@@ -436,6 +448,25 @@ public final class LibraryManager {
         } catch {
             // Offline or a timeout: try again with the next scan.
             metadataProblem = "Couldn\u{2019}t reach TMDB: \(error.localizedDescription)"
+        }
+        activity = .idle
+    }
+
+    private func keylessLookUpBatch() async {
+        let indexer = await indexer()
+        activity = .lookingUp
+        do {
+            let settled = try await indexer.lookUpPendingWithoutKey(tvmaze: TVmazeClient(), wikipedia: WikipediaClient(), artworkStore: artworkStore)
+            metadataProblem = nil
+            if settled > 0 {
+                revision += 1
+                enqueue(.lookUp)
+            }
+        } catch is CancellationError {
+            // Picked up again after the next scan.
+        } catch {
+            // Offline or rate limited: try again with the next scan.
+            metadataProblem = "Couldn\u{2019}t reach TVmaze or Wikipedia: \(error.localizedDescription)"
         }
         activity = .idle
     }

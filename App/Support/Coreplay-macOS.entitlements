@@ -15,6 +15,9 @@
 	<true/>
 	<key>com.apple.security.assets.movies.read-only</key>
 	<true/>
+	<!-- Snapshots from the video player go to Pictures ▸ Coreplay. -->
+	<key>com.apple.security.assets.pictures.read-write</key>
+	<true/>
 	<!-- Streams, network shares and (opt-in) metadata lookups. -->
 	<key>com.apple.security.network.client</key>
 	<true/>

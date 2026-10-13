@@ -58,10 +58,8 @@ public struct ShowDetailView: View {
                     if !show.cast.isEmpty {
                         CastShelf(cast: show.cast)
                     }
-                    if show.matchState == .matched || show.matchState == .manual {
-                        Text("Details and artwork from TMDB.")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                    if let credit = MetadataCredit.forShow(show) {
+                        MetadataCreditView(credit: credit)
                     }
                 }
                 .padding(Metrics.contentPadding)

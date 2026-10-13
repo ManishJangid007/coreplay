@@ -485,3 +485,58 @@ enum VideoFormat {
         return names.filter { seen.insert($0).inserted }.joined(separator: ", ")
     }
 }
+
+// MARK: - Credits
+
+/// Where a page's details came from, as their licences ask.
+enum MetadataCredit: Equatable {
+    case tmdb
+    case wikipedia
+    case tvmaze
+
+    static func forVideo(_ video: Video) -> MetadataCredit? {
+        switch video.matchState {
+        case .matched, .manual:
+            if video.tmdbID != nil { return .tmdb }
+            return video.kind == .episode ? .tvmaze : .wikipedia
+        case .keyless:
+            return video.kind == .episode ? .tvmaze : .wikipedia
+        case .pending, .notFound, .local:
+            return nil
+        }
+    }
+
+    static func forShow(_ show: TVShow) -> MetadataCredit? {
+        switch show.matchState {
+        case .matched, .manual:
+            return show.tmdbID != nil ? .tmdb : .tvmaze
+        case .keyless:
+            return .tvmaze
+        case .pending, .notFound, .local:
+            return nil
+        }
+    }
+}
+
+struct MetadataCreditView: View {
+    let credit: MetadataCredit
+
+    var body: some View {
+        switch credit {
+        case .tmdb:
+            Text("Details and artwork from TMDB.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        case .wikipedia:
+            Text("Details and poster from [Wikipedia](https://en.wikipedia.org), shared under CC BY-SA.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .tint(.secondary)
+        case .tvmaze:
+            Text("Details and artwork from [TVmaze](https://www.tvmaze.com), shared under CC BY-SA.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .tint(.secondary)
+        }
+    }
+}

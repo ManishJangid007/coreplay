@@ -24,28 +24,108 @@ enum TimeLabels {
     }
 }
 
-/// A scrubber bound to the playback controller.
+/// A scrubber bound to the playback controller. Video scrubbers show frame
+/// previews and chapter gaps.
 struct ControllerScrubber: View {
     let controller: PlaybackController
-    var appearance: PlaybackScrubber.Appearance = .onDark
+    var appearance: ControlAppearance = .onDark
     var showsLabels = true
+    var showsPreviews = false
 
     var body: some View {
-        PlaybackScrubber(
-            position: controller.currentTime,
-            duration: controller.duration,
-            elapsedText: TimeLabels.elapsed(controller),
-            remainingText: TimeLabels.remaining(controller),
-            accessibilityValue: TimeLabels.accessibilityValue(controller),
-            appearance: appearance,
-            showsLabels: showsLabels,
-            onScrubStart: { controller.beginScrubbing() },
-            onScrub: { controller.scrub(to: $0) },
-            onScrubEnd: { target in
-                Task { await controller.endScrubbing(at: target) }
+        Group {
+            if showsPreviews {
+                PlaybackScrubber(
+                    position: controller.currentTime,
+                    duration: controller.duration,
+                    elapsedText: TimeLabels.elapsed(controller),
+                    remainingText: TimeLabels.remaining(controller),
+                    accessibilityValue: TimeLabels.accessibilityValue(controller),
+                    appearance: appearance,
+                    showsLabels: showsLabels,
+                    markers: controller.chapters.map(\.start),
+                    previewWidth: ScrubPreviewBubble.width,
+                    onScrubStart: { controller.beginScrubbing() },
+                    onScrub: { controller.scrub(to: $0) },
+                    onScrubEnd: { target in
+                        Task { await controller.endScrubbing(at: target) }
+                    }
+                ) { time in
+                    ScrubPreviewBubble(controller: controller, time: time)
+                }
+            } else {
+                PlaybackScrubber(
+                    position: controller.currentTime,
+                    duration: controller.duration,
+                    elapsedText: TimeLabels.elapsed(controller),
+                    remainingText: TimeLabels.remaining(controller),
+                    accessibilityValue: TimeLabels.accessibilityValue(controller),
+                    appearance: appearance,
+                    showsLabels: showsLabels,
+                    onScrubStart: { controller.beginScrubbing() },
+                    onScrub: { controller.scrub(to: $0) },
+                    onScrubEnd: { target in
+                        Task { await controller.endScrubbing(at: target) }
+                    }
+                )
             }
-        )
+        }
         .disabled(!controller.isSeekable)
+    }
+}
+
+/// The frame at the scrub position, with its time and chapter, like YouTube.
+/// Before frames are ready it shows just the time.
+struct ScrubPreviewBubble: View {
+    static var width: CGFloat {
+        #if os(macOS)
+        232
+        #else
+        200
+        #endif
+    }
+
+    let controller: PlaybackController
+    let time: TimeInterval
+
+    private var chapterTitle: String? {
+        guard controller.chapters.count > 1 else { return nil }
+        return controller.chapters.last(where: { $0.start <= time + 0.5 })?.displayTitle
+    }
+
+    var body: some View {
+        let previews = controller.scrubPreviews
+        let _ = previews.revision
+        VStack(spacing: 6) {
+            if let image = previews.image(at: time) {
+                let ratio = image.height > 0 ? CGFloat(image.width) / CGFloat(image.height) : 16.0 / 9.0
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .aspectRatio(ratio, contentMode: .fill)
+                    .frame(width: Self.width, height: min(Self.width / max(ratio, 0.5), 180))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(.white.opacity(0.35), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.45), radius: 14, y: 4)
+            }
+            VStack(spacing: 1) {
+                if let chapterTitle {
+                    Text(chapterTitle)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Text(PlaybackTimeFormatter.string(from: time, referenceDuration: controller.duration))
+                    .font(.callout.monospacedDigit().weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
+        }
+        .frame(width: Self.width)
+        .accessibilityHidden(true)
     }
 }
 
@@ -57,6 +137,7 @@ struct RoutePickerView: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let view = AVRoutePickerView()
         view.tintColor = .white
+        view.activeTintColor = .systemBlue
         view.prioritizesVideoDevices = prioritizesVideoDevices
         return view
     }
@@ -83,6 +164,7 @@ struct RoutePickerView: NSViewRepresentable {
     func makeNSView(context: Context) -> AVRoutePickerView {
         let view = AVRoutePickerView()
         view.isRoutePickerButtonBordered = false
+        view.setRoutePickerButtonColor(.white, for: .normal)
         return view
     }
 
@@ -90,10 +172,25 @@ struct RoutePickerView: NSViewRepresentable {
 }
 #endif
 
+/// The AirPlay button sized like the other player buttons.
+struct AirPlayButton: View {
+    var prioritizesVideoDevices = false
+
+    var body: some View {
+        RoutePickerView(prioritizesVideoDevices: prioritizesVideoDevices)
+            .frame(width: 26, height: 26)
+            .frame(width: Metrics.playerButtonSize, height: Metrics.playerButtonSize)
+            .accessibilityLabel(Text("AirPlay"))
+            #if os(macOS)
+            .help("AirPlay")
+            #endif
+    }
+}
+
 /// Playback speeds offered in menus. Rates above 2× switch to VLC.
 enum PlaybackSpeeds {
-    static let common: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-    static let extended: [Float] = [3, 4]
+    static let menu: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4]
+    static let all: [Float] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]
 
     static func label(_ rate: Float) -> String {
         let formatted = rate.truncatingRemainder(dividingBy: 1) == 0
@@ -101,9 +198,17 @@ enum PlaybackSpeeds {
             : String(format: "%g", rate)
         return "\(formatted)\u{00D7}"
     }
+
+    /// The next speed up or down the list, for keyboard shortcuts.
+    static func step(from rate: Float, faster: Bool) -> Float {
+        if faster {
+            return all.first(where: { $0 > rate + 0.01 }) ?? all.last ?? rate
+        }
+        return all.last(where: { $0 < rate - 0.01 }) ?? all.first ?? rate
+    }
 }
 
-/// Audio, subtitle and speed menus: Level 1 controls, as in the TV app.
+/// Audio and subtitle choices: the speech bubble in the TV app's player.
 struct AudioAndSubtitlesMenu: View {
     let controller: PlaybackController
     var onAddSubtitleFile: () -> Void
@@ -127,10 +232,13 @@ struct AudioAndSubtitlesMenu: View {
             .pickerStyle(.inline)
             Button("Add Subtitle File\u{2026}", systemImage: "doc.badge.plus", action: onAddSubtitleFile)
         } label: {
-            Label("Audio and Subtitles", systemImage: "captions.bubble")
-                .labelStyle(.iconOnly)
+            PlayerIcon("captions.bubble")
         }
-        .menuIndicator(.hidden)
+        .playerMenuStyle()
+        .accessibilityLabel(Text("Audio and Subtitles"))
+        #if os(macOS)
+        .help("Audio and Subtitles")
+        #endif
     }
 
     private var audioSelection: Binding<MediaTrack.ID?> {
@@ -154,22 +262,26 @@ struct AudioAndSubtitlesMenu: View {
     }
 }
 
+/// Playback speed, as in the TV app.
 struct SpeedMenu: View {
     let controller: PlaybackController
 
     var body: some View {
         Menu {
             Picker("Playback Speed", selection: rateSelection) {
-                ForEach(PlaybackSpeeds.common + PlaybackSpeeds.extended, id: \.self) { rate in
+                ForEach(PlaybackSpeeds.menu, id: \.self) { rate in
                     Text(PlaybackSpeeds.label(rate)).tag(rate)
                 }
             }
             .pickerStyle(.inline)
         } label: {
-            Label("Playback Speed", systemImage: "speedometer")
-                .labelStyle(.iconOnly)
+            PlayerIcon(controller.rate == 1 ? "gauge.with.dots.needle.33percent" : "gauge.with.dots.needle.67percent")
         }
-        .menuIndicator(.hidden)
+        .playerMenuStyle()
+        .accessibilityLabel(Text("Playback Speed"))
+        #if os(macOS)
+        .help("Playback Speed")
+        #endif
     }
 
     private var rateSelection: Binding<Float> {
@@ -179,5 +291,56 @@ struct SpeedMenu: View {
                 Task { await controller.setRate(rate) }
             }
         )
+    }
+}
+
+/// Mute button and volume slider for the Mac player (iPhone and iPad use
+/// the hardware buttons).
+struct VolumeControl: View {
+    let controller: PlaybackController
+    var sliderWidth: CGFloat = 84
+
+    var body: some View {
+        HStack(spacing: 2) {
+            PlayerIconButton(controller.isMuted ? "Unmute" : "Mute", systemImage: symbol, help: controller.isMuted ? "Unmute (M)" : "Mute (M)") {
+                controller.setMuted(!controller.isMuted)
+            }
+            CapsuleSlider(
+                value: Binding(
+                    get: { controller.isMuted ? 0 : Double(min(controller.volume, 1)) },
+                    set: { newValue in
+                        if controller.isMuted { controller.setMuted(false) }
+                        controller.setVolume(Float(newValue))
+                    }
+                ),
+                in: 0...1,
+                label: "Volume",
+                step: 0.1
+            )
+            .frame(width: sliderWidth)
+            .padding(.trailing, 10)
+        }
+    }
+
+    private var symbol: String {
+        if controller.isMuted || controller.volume <= 0.001 { return "speaker.slash.fill" }
+        if controller.volume < 0.34 { return "speaker.wave.1.fill" }
+        if controller.volume < 0.67 { return "speaker.wave.2.fill" }
+        return "speaker.wave.3.fill"
+    }
+}
+
+/// A short confirmation over the player ("Speed 1.5×", "Saved to Pictures").
+struct PlayerToast: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .glassEffect(.regular, in: .capsule)
+            .accessibilityAddTraits(.isStaticText)
     }
 }

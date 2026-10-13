@@ -46,7 +46,7 @@ public struct EngineCapabilities: OptionSet, Hashable, Sendable {
     public static let nativeAirPlayVideo  = EngineCapabilities(rawValue: 1 << 18)
     public static let pictureInPicture    = EngineCapabilities(rawValue: 1 << 19)
 
-    /// What `VLCKitEngine` offers (some are wired up in later milestones).
+    /// What `VLCKitEngine` offers (disc menus and 360° viewpoints are wired up in Milestone 6).
     public static let vlc: EngineCapabilities = [
         .audioDelay, .subtitleDelay, .externalSubtitles, .subtitleStyling, .dualSubtitles,
         .equalizer, .videoAdjustments, .deinterlacing, .aspectRatioOverride, .crop,
@@ -56,6 +56,6 @@ public struct EngineCapabilities: OptionSet, Hashable, Sendable {
 
     /// What `AVPlayerEngine` offers.
     public static let avFoundation: EngineCapabilities = [
-        .frameStepping, .chapters, .nativeAirPlayVideo, .pictureInPicture,
+        .frameStepping, .chapters, .snapshots, .nativeAirPlayVideo, .pictureInPicture,
     ]
 }

@@ -16,6 +16,18 @@ import UIKit
 public final class PlaybackSession {
     public let controller: PlaybackController
     public private(set) var queue = PlaybackQueue()
+    /// A short message for the player to show ("Saved to Pictures"), for
+    /// actions that happen outside it (menus, shortcuts).
+    public private(set) var announcement: Announcement?
+
+    public struct Announcement: Hashable, Sendable {
+        public let id: UUID
+        public let message: String
+    }
+
+    public func announce(_ message: String) {
+        announcement = Announcement(id: UUID(), message: message)
+    }
 
     @ObservationIgnored private let nowPlaying = NowPlayingInfoPublisher()
     @ObservationIgnored private let remoteCommands = RemoteCommandController()
@@ -35,6 +47,7 @@ public final class PlaybackSession {
         }
         remoteCommands.install(for: self)
         updateRemoteCommands()
+        restorePreferences()
         #if os(iOS)
         audioSession.onEvent = { [weak self] event in
             self?.handleAudioSessionEvent(event)
@@ -196,6 +209,48 @@ public final class PlaybackSession {
         queue.moveUpNext(fromOffsets: source, toOffset: destination)
     }
 
+    // MARK: - Remembered preferences
+
+    /// Turns the equalizer on or off or changes it; remembered between launches.
+    public func setEqualizer(_ settings: EqualizerSettings) async {
+        await controller.setEqualizer(settings)
+        Self.save(settings, forKey: Self.equalizerKey)
+    }
+
+    /// Subtitle text size; remembered between launches.
+    public func setSubtitleSize(_ size: SubtitleSize) async {
+        await controller.setSubtitleSize(size)
+        UserDefaults.standard.set(size.rawValue, forKey: Self.subtitleSizeKey)
+    }
+
+    private static let equalizerKey = "player.equalizer"
+    private static let subtitleSizeKey = "player.subtitleSize"
+
+    private func restorePreferences() {
+        let equalizer: EqualizerSettings? = Self.load(forKey: Self.equalizerKey)
+        let subtitleSize = UserDefaults.standard.string(forKey: Self.subtitleSizeKey).flatMap(SubtitleSize.init(rawValue:))
+        guard equalizer != nil || subtitleSize != nil else { return }
+        Task {
+            if let equalizer {
+                await controller.setEqualizer(equalizer)
+            }
+            if let subtitleSize {
+                await controller.setSubtitleSize(subtitleSize)
+            }
+        }
+    }
+
+    private static func save<Value: Encodable>(_ value: Value, forKey key: String) {
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private static func load<Value: Decodable>(forKey key: String) -> Value? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(Value.self, from: data)
+    }
+
     // MARK: - Engine configuration
 
     public func updateConfiguration(_ configuration: EngineConfiguration) {
@@ -298,8 +353,9 @@ public final class PlaybackSession {
         }
     }
 
-    /// Video can't render in the background (until Picture in Picture lands
-    /// in Milestone 5), so it pauses; audio keeps playing.
+    /// Video keeps playing in Picture in Picture when the app goes to the
+    /// background (AVFoundation starts it by itself); otherwise it pauses,
+    /// since nothing would show it. Audio keeps playing.
     private func observeAppLifecycle() {
         let token = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
@@ -308,6 +364,11 @@ public final class PlaybackSession {
         ) { @Sendable [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.controller.hasVideo, self.controller.isPlaying else { return }
+                let pip = self.controller.pictureInPicture
+                let startsAutomatically = pip.isPossible && self.controller.activeEngine == .avFoundation
+                if pip.isActive || startsAutomatically || self.controller.isExternalPlaybackActive {
+                    return
+                }
                 self.pause()
             }
         }

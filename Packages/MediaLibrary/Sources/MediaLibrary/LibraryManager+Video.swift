@@ -419,7 +419,7 @@ extension LibraryManager {
         metadataProblem = nil
     }
 
-    /// Settings ▸ Metadata ▸ Look Up Again: everything TMDB didn't find.
+    /// Settings ▸ Metadata ▸ Look Up Again: everything that wasn't found.
     public func lookUpUnmatchedAgain() {
         Task {
             _ = try? await indexer().retryNotFound()
@@ -443,29 +443,93 @@ extension LibraryManager {
         }
     }
 
+    // MARK: - Free sources
+
+    /// Settings ▸ Metadata: look things up on TVmaze and Wikipedia when
+    /// there's no TMDB key.
+    public func setUsesFreeMetadataSources(_ uses: Bool) {
+        usesFreeMetadataSources = uses
+        UserDefaults.standard.set(uses, forKey: Self.freeSourcesKey)
+        if uses, !hasMetadataKey {
+            enqueue(.lookUp)
+        }
+    }
+
+    /// Whether lookups (and Fix Match) can run at all.
+    public var canLookUp: Bool {
+        hasMetadataKey || usesFreeMetadataSources
+    }
+
+    /// Where Fix Match searches: "TMDB", "Wikipedia" or "TVmaze".
+    public func lookupSourceName(forShows: Bool) -> String {
+        if hasMetadataKey { return "TMDB" }
+        return forShows ? "TVmaze" : "Wikipedia"
+    }
+
+    // MARK: - Fix Match
+
     public func searchMovies(_ title: String, year: Int?) async throws -> [LookupResult] {
-        guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
-        return try await TMDBClient(key: key).searchMovies(title: title, year: year).prefix(20).map { result in
-            LookupResult(id: result.id, title: result.title, year: result.year, overview: result.overview, posterURL: TMDBClient.imageURL(result.posterPath, size: "w185"))
+        if let key = metadataKey {
+            return try await TMDBClient(key: key).searchMovies(title: title, year: year).prefix(20).map { result in
+                LookupResult(id: result.id, title: result.title, year: result.year, overview: result.overview, posterURL: TMDBClient.imageURL(result.posterPath, size: "w185"))
+            }
+        }
+        guard usesFreeMetadataSources else { throw TMDBClient.Failure.invalidKey }
+        let pages = try await WikipediaClient().searchFilms(title: title, year: year)
+        return pages.filter(WikipediaFilms.isFilm).map { page in
+            LookupResult(
+                id: page.pageid,
+                title: WikipediaFilms.parseTitle(page.title).title,
+                year: WikipediaFilms.year(of: page),
+                overview: WikipediaFilms.synopsis(page),
+                posterURL: page.posterURL,
+                source: .wikipedia
+            )
         }
     }
 
     public func searchShows(_ title: String, year: Int?) async throws -> [LookupResult] {
-        guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
-        return try await TMDBClient(key: key).searchShows(title: title, year: year).prefix(20).map { result in
-            LookupResult(id: result.id, title: result.name, year: result.year, overview: result.overview, posterURL: TMDBClient.imageURL(result.posterPath, size: "w185"))
+        if let key = metadataKey {
+            return try await TMDBClient(key: key).searchShows(title: title, year: year).prefix(20).map { result in
+                LookupResult(id: result.id, title: result.name, year: result.year, overview: result.overview, posterURL: TMDBClient.imageURL(result.posterPath, size: "w185"))
+            }
+        }
+        guard usesFreeMetadataSources else { throw TMDBClient.Failure.invalidKey }
+        return try await TVmazeClient().searchShows(title: title).prefix(20).map { show in
+            LookupResult(
+                id: show.id,
+                title: show.name,
+                year: show.year,
+                overview: show.plainSummary,
+                posterURL: show.image?.medium.flatMap(URL.init(string:)),
+                source: .tvmaze
+            )
         }
     }
 
     public func fixMatch(_ video: Video, with result: LookupResult) async throws {
-        guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
-        try await indexer().fixMatch(videoID: video.id, tmdbID: result.id, client: TMDBClient(key: key), artworkStore: artworkStore)
+        switch result.source {
+        case .tmdb:
+            guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
+            try await indexer().fixMatch(videoID: video.id, tmdbID: result.id, client: TMDBClient(key: key), artworkStore: artworkStore)
+        case .wikipedia:
+            try await indexer().fixMatch(videoID: video.id, wikipediaPageID: result.id, wikipedia: WikipediaClient(), artworkStore: artworkStore)
+        case .tvmaze:
+            return
+        }
         bumpRevision()
     }
 
     public func fixMatch(_ show: TVShow, with result: LookupResult) async throws {
-        guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
-        try await indexer().fixMatch(showID: show.id, tmdbID: result.id, client: TMDBClient(key: key), artworkStore: artworkStore)
+        switch result.source {
+        case .tmdb:
+            guard let key = metadataKey else { throw TMDBClient.Failure.invalidKey }
+            try await indexer().fixMatch(showID: show.id, tmdbID: result.id, client: TMDBClient(key: key), artworkStore: artworkStore)
+        case .tvmaze:
+            try await indexer().fixMatch(showID: show.id, tvmazeID: result.id, tvmaze: TVmazeClient(), artworkStore: artworkStore)
+        case .wikipedia:
+            return
+        }
         bumpRevision()
     }
 }

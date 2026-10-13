@@ -237,10 +237,8 @@ struct VideoDetailsSection: View {
                     .font(.callout)
                 }
             }
-            if video.matchState == .matched || video.matchState == .manual {
-                Text("Details and artwork from TMDB.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            if let credit = MetadataCredit.forVideo(video) {
+                MetadataCreditView(credit: credit)
             }
         }
     }

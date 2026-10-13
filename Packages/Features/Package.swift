@@ -84,6 +84,16 @@ let package = Package(
                 "NowPlaying",
             ]
         ),
+        .testTarget(
+            name: "PlayerFeatureTests",
+            dependencies: [
+                "PlayerFeature",
+                "DesignSystem",
+                "NowPlaying",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+                .product(name: "PlaybackEngine", package: "PlaybackEngine"),
+            ]
+        ),
         .target(
             name: "SettingsFeature",
             dependencies: [

@@ -36,7 +36,7 @@ final class VLCKitEngine: PlaybackEngine {
     private(set) var videoDimensions: VideoDimensions?
 
     private let continuation: AsyncStream<PlaybackEvent>.Continuation
-    private let player: VLCMediaPlayer
+    let player: VLCMediaPlayer
     private let bridge = VLCEventBridge()
     private let mediaOptions: [String]
     private var bridgeTask: Task<Void, Never>?
@@ -53,6 +53,36 @@ final class VLCKitEngine: PlaybackEngine {
     private var fallbackDrawable: PlatformView?
     private var lastArtworkIdentity: ObjectIdentifier?
     private var lastArtworkData: Data?
+    /// Set once per item when the picture options have been applied to a
+    /// running video output (libVLC keeps some of them per output).
+    private var appliedPictureOptions = false
+
+    // Level 2 options. Setters apply straight away; picture options are
+    // applied again when playback starts, once the video output exists.
+    var fillMode: VideoFillMode = .fit {
+        didSet { applyFillMode() }
+    }
+    var aspectRatio: VideoRatio? {
+        didSet { applyAspectRatio() }
+    }
+    var cropRatio: VideoRatio? {
+        didSet { applyCrop() }
+    }
+    var videoAdjustments: VideoAdjustments = .neutral {
+        didSet { applyAdjustments() }
+    }
+    var deinterlace: DeinterlaceMode = .automatic {
+        didSet { applyDeinterlace() }
+    }
+    var stereoMode: StereoMode = .automatic {
+        didSet { applyStereoMode() }
+    }
+    var equalizer: EqualizerSettings = .flat {
+        didSet { applyEqualizer() }
+    }
+    var subtitleScale: Float = 1 {
+        didSet { player.currentSubTitleFontScale = subtitleScale }
+    }
 
     /// Engines whose player hadn't confirmed its stop when they were shut down.
     /// Releasing a running VLCMediaPlayer would block the main thread while
@@ -134,6 +164,7 @@ final class VLCKitEngine: PlaybackEngine {
         stopRequested = false
         lastArtworkIdentity = nil
         lastArtworkData = nil
+        appliedPictureOptions = false
 
         player.media = media
         setState(.opening)
@@ -315,6 +346,10 @@ final class VLCKitEngine: PlaybackEngine {
             setState(.opening)
         case .playing:
             hasPlayedCurrentMedia = true
+            if !appliedPictureOptions {
+                appliedPictureOptions = true
+                applyAllOptions()
+            }
             setState(.playing)
             updateDuration(milliseconds: nil)
             refreshTracks()

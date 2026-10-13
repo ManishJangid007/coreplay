@@ -38,7 +38,7 @@ public struct SourcesView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Coreplay reads music and videos from these places and keeps them up to date. Your files stay where they are.")
                     if library.activity == .lookingUp {
-                        Label("Getting details and artwork from TMDB\u{2026}", systemImage: "arrow.down.circle")
+                        Label("Getting details and artwork\u{2026}", systemImage: "arrow.down.circle")
                     }
                 }
             }

@@ -51,14 +51,18 @@ public struct MediaTrack: Identifiable, Hashable, Sendable {
 
     /// The label shown in track menus: language first, details after, never jargon.
     ///
-    /// Examples: "English", "English (SDH)", "Japanese · 5.1", "Commentary".
+    /// Examples: "English", "English (SDH)", "Japanese · 5.1", "Commentary",
+    /// and "English · Commentary · Stereo" when the file names the track.
     public func displayName(locale: Locale = .current) -> String {
         var title: String
+        var trackTitle: String?
+        let cleanedName = MediaTrack.cleanedEngineName(name)
         if let code = languageCode,
            let language = MediaTrack.languageName(for: code, locale: locale) {
             title = language
+            trackTitle = MediaTrack.trackTitle(in: cleanedName, languageCode: code, languageName: language, codec: codec)
         } else {
-            title = MediaTrack.cleanedEngineName(name)
+            title = cleanedName
         }
         if title.isEmpty {
             title = kind == .subtitle ? "Subtitle" : "Track"
@@ -71,10 +75,50 @@ public struct MediaTrack: Identifiable, Hashable, Sendable {
         if !qualifiers.isEmpty {
             title += " (\(qualifiers.joined(separator: ", ")))"
         }
+        if let trackTitle {
+            title += " \u{00B7} \(trackTitle)"
+        }
         if kind == .audio, let layout = MediaTrack.channelLayoutName(channelCount) {
             title += " \u{00B7} \(layout)"
         }
         return title
+    }
+
+    /// What a track's own name says beyond its language, flags and channels:
+    /// "Commentary" from "English (Commentary)", or "Director's Commentary".
+    /// `nil` when the name only repeats what the label already shows.
+    static func trackTitle(in cleanedName: String, languageCode: String, languageName: String, codec: String?) -> String? {
+        var text = cleanedName
+        // The language, as shown and in English (VLC names tracks in English).
+        var languageNames = [languageName]
+        if let english = MediaTrack.languageName(for: languageCode, locale: Locale(identifier: "en_US")) {
+            languageNames.append(english)
+        }
+        for name in languageNames.sorted(by: { $0.count > $1.count }) {
+            text = text.replacingOccurrences(of: name, with: " ", options: .caseInsensitive)
+        }
+        // Flags and channel layouts, which the label shows its own way.
+        text = text.replacingOccurrences(
+            of: #"(?i)\b(sdh|cc|forced|external|default|stereo|mono|surround)\b|\b\d\.\d(\s*ch)?\b"#,
+            with: " ",
+            options: .regularExpression
+        )
+        // Brackets, separators and spaces left behind.
+        text = text.replacingOccurrences(of: #"[\[\]\(\)\{\}]"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "-\u{2013}\u{2014}\u{00B7}:,;|/_").union(.whitespaces))
+        guard text.contains(where: \.isLetter) else { return nil }
+        // "Track 3", "Audio 2", a bare language code, or just the codec.
+        if text.range(of: #"(?i)^(track|audio|subtitles?|stream)\s*\d*$"#, options: .regularExpression) != nil {
+            return nil
+        }
+        if text.count <= 3, MediaTrack.languagesMatch(text, languageCode) {
+            return nil
+        }
+        if let codec, text.caseInsensitiveCompare(codec) == .orderedSame {
+            return nil
+        }
+        return text
     }
 
     /// "en" / "eng" / "pt-BR" → "English" / "English" / "Portuguese (Brazil)".

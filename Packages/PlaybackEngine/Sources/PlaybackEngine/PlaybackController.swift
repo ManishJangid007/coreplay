@@ -51,6 +51,20 @@ public final class PlaybackController {
     public private(set) var isSeekable = false
     /// `true` while the user drags a scrubber; engine time updates are ignored.
     public private(set) var isScrubbing = false
+    /// The video is playing on an AirPlay device (AVFoundation only).
+    public private(set) var isExternalPlaybackActive = false
+
+    // Level 2 options. Picture options and timing belong to the current item;
+    // the fill mode, sound and subtitle size carry on to the next one.
+    public private(set) var fillMode: VideoFillMode = .fit
+    public private(set) var aspectRatio: VideoRatio?
+    public private(set) var cropRatio: VideoRatio?
+    public private(set) var videoAdjustments: VideoAdjustments = .neutral
+    public private(set) var deinterlace: DeinterlaceMode = .automatic
+    public private(set) var stereoMode: StereoMode = .automatic
+    public private(set) var equalizer: EqualizerSettings = .flat
+    public private(set) var subtitleSize: SubtitleSize = .standard
+    public private(set) var abLoop = ABLoop()
 
     public var isPlaying: Bool {
         state == .playing || state == .buffering
@@ -87,7 +101,11 @@ public final class PlaybackController {
     }
 
     /// The single view all engines render into. See `VideoSurface`.
-    public let videoView = PlatformVideoView(frame: .zero)
+    public let videoView: PlatformVideoView
+    /// Picture in Picture for whichever engine is playing.
+    public let pictureInPicture = PictureInPicture()
+    /// Frame previews for the scrubber.
+    public let scrubPreviews = ScrubPreviews()
 
     // MARK: Internals
 
@@ -112,6 +130,9 @@ public final class PlaybackController {
     @ObservationIgnored private var itemArtwork: Data?
     /// Containers currently showing a `VideoSurface`, newest last (see VideoSurface.swift).
     @ObservationIgnored var videoContainers: [WeakVideoContainer] = []
+    /// `videoView`, with VLC's Picture in Picture hooks.
+    @ObservationIgnored private let videoHost: VideoHostView
+    @ObservationIgnored private var lastPictureInPictureSnapshot = PictureInPictureMediaBridge.Snapshot()
 
     private struct TrackRestore {
         var audioLanguage: String?
@@ -127,6 +148,10 @@ public final class PlaybackController {
         self.configuration = configuration
         self.router = EngineRouter(alwaysUseVLC: configuration.alwaysUseVLC)
         self.factory = EngineFactory(configuration: configuration)
+        let host = VideoHostView(frame: .zero)
+        self.videoHost = host
+        self.videoView = host
+        connectPictureInPicture()
     }
 
     // MARK: - Loading
@@ -148,6 +173,7 @@ public final class PlaybackController {
 
         currentItem = item
         resetMediaState()
+        scrubPreviews.reset()
         hasPlayedCurrentItem = false
         didFallBackToVLC = false
         addedSubtitleURLs = []
@@ -159,13 +185,18 @@ public final class PlaybackController {
         notify(.item)
         loadItemArtwork(for: item)
 
-        let decision: EngineRouter.Decision
+        var decision: EngineRouter.Decision
         if let quick = router.quickDecision(for: item) {
             decision = quick
         } else {
             let probe = await prober.probe(item.url)
             guard loadGeneration == generation else { return }
             decision = router.decision(for: item, probe: probe)
+        }
+        // Only VLC has an equalizer; protected files can only play in AVFoundation.
+        if equalizer.isEnabled, decision.engine == .avFoundation,
+           decision.reason != .protectedContent, decision.reason != .itemOverride {
+            decision = EngineRouter.Decision(engine: .vlc, reason: .equalizer)
         }
         routingReason = decision.reason
         await start(item, on: decision.engine, autoplay: autoplay, generation: loadGeneration)
@@ -180,6 +211,7 @@ public final class PlaybackController {
             engine.rate = rate
             engine.volume = volume
             engine.isMuted = isMuted
+            applyOptions(to: engine)
             if autoplay {
                 engine.play()
             } else if engine.state == .opening {
@@ -217,6 +249,12 @@ public final class PlaybackController {
         activeEngine = newEngine.kind
         capabilities = newEngine.capabilities
         newEngine.attachVideoOutput(to: videoView)
+        if let avEngine = newEngine as? AVPlayerEngine, let layer = avEngine.playerLayer {
+            pictureInPicture.use(playerLayer: layer)
+        } else {
+            // VLC offers Picture in Picture once its video output is ready.
+            pictureInPicture.reset()
+        }
 
         let engineID = ObjectIdentifier(newEngine)
         let events = newEngine.events
@@ -245,6 +283,8 @@ public final class PlaybackController {
         engine = nil
         eventTask?.cancel()
         eventTask = nil
+        pictureInPicture.reset()
+        isExternalPlaybackActive = false
         oldEngine.attachVideoOutput(to: nil)
         let videoView = self.videoView
         let task = Task { @MainActor in
@@ -290,6 +330,7 @@ public final class PlaybackController {
         endSecurityScopedAccess()
         currentItem = nil
         resetMediaState()
+        scrubPreviews.reset()
         activeEngine = nil
         routingReason = nil
         capabilities = []
@@ -307,6 +348,7 @@ public final class PlaybackController {
         seekHold = (target, .now + .seconds(2))
         await engine.seek(to: target)
         notify(.seek)
+        updatePictureInPicture(invalidate: true)
     }
 
     public func skip(by seconds: TimeInterval) async {
@@ -402,6 +444,166 @@ public final class PlaybackController {
         notify(.seek)
     }
 
+    // MARK: - Level 2 options
+
+    /// Fit or fill the player. Both engines can.
+    public func setFillMode(_ mode: VideoFillMode) {
+        fillMode = mode
+        engine?.fillMode = mode
+    }
+
+    /// Forces the picture's shape, or `nil` for the file's own. Needs VLC.
+    public func setAspectRatio(_ ratio: VideoRatio?) async {
+        if ratio != nil, !capabilities.contains(.aspectRatioOverride) {
+            await handOff(to: .vlc)
+        }
+        aspectRatio = ratio
+        if capabilities.contains(.aspectRatioOverride) {
+            engine?.aspectRatio = ratio
+        }
+    }
+
+    /// Trims the picture to a shape, or `nil` for the whole picture. Needs VLC.
+    public func setCropRatio(_ ratio: VideoRatio?) async {
+        if ratio != nil, !capabilities.contains(.crop) {
+            await handOff(to: .vlc)
+        }
+        cropRatio = ratio
+        if capabilities.contains(.crop) {
+            engine?.cropRatio = ratio
+        }
+    }
+
+    /// Brightness, contrast, saturation, hue and gamma. Needs VLC.
+    public func setVideoAdjustments(_ adjustments: VideoAdjustments) async {
+        let values = adjustments.clamped
+        if !values.isNeutral, !capabilities.contains(.videoAdjustments) {
+            await handOff(to: .vlc)
+        }
+        videoAdjustments = values
+        if capabilities.contains(.videoAdjustments) {
+            engine?.videoAdjustments = values
+        }
+    }
+
+    /// Needs VLC.
+    public func setDeinterlace(_ mode: DeinterlaceMode) async {
+        if mode != .automatic, !capabilities.contains(.deinterlacing) {
+            await handOff(to: .vlc)
+        }
+        deinterlace = mode
+        if capabilities.contains(.deinterlacing) {
+            engine?.deinterlace = mode
+        }
+    }
+
+    /// Mono, left or right only, swapped… Needs VLC.
+    public func setStereoMode(_ mode: StereoMode) async {
+        if mode != .automatic, !capabilities.contains(.stereoModes) {
+            await handOff(to: .vlc)
+        }
+        stereoMode = mode
+        if capabilities.contains(.stereoModes) {
+            engine?.stereoMode = mode
+        }
+    }
+
+    /// The equalizer is VLC's; while it's on, everything plays with VLC.
+    public func setEqualizer(_ settings: EqualizerSettings) async {
+        if settings.isEnabled, !capabilities.contains(.equalizer), currentItem != nil {
+            await handOff(to: .vlc)
+            routingReason = .equalizer
+        }
+        equalizer = settings
+        if capabilities.contains(.equalizer) {
+            engine?.equalizer = settings
+        }
+    }
+
+    /// Subtitle text size. Needs VLC for anything but the default.
+    public func setSubtitleSize(_ size: SubtitleSize) async {
+        if size != .standard, !capabilities.contains(.subtitleStyling), !subtitleTracks.isEmpty {
+            await handOff(to: .vlc)
+        }
+        subtitleSize = size
+        if capabilities.contains(.subtitleStyling) {
+            engine?.subtitleScale = size.scale
+        }
+    }
+
+    /// Shows the next or previous frame (pausing first).
+    public func stepFrame(forward: Bool) {
+        guard let engine, capabilities.contains(.frameStepping) else { return }
+        engine.stepFrame(forward: forward)
+    }
+
+    /// Saves the frame on screen to `url` as a PNG.
+    public func saveSnapshot(to url: URL) async throws {
+        guard let engine else {
+            throw PlaybackError(.engineFailure, "Nothing is playing.")
+        }
+        try await engine.saveSnapshot(to: url)
+    }
+
+    /// Sets the loop's start, then its end, then clears it.
+    public func advanceABLoop() {
+        abLoop.advance(at: currentTime)
+    }
+
+    public func clearABLoop() {
+        abLoop.clear()
+    }
+
+    /// The options this engine can take, after a load or a hand-off.
+    private func applyOptions(to engine: any PlaybackEngine) {
+        engine.fillMode = fillMode
+        let available = engine.capabilities
+        if available.contains(.aspectRatioOverride) { engine.aspectRatio = aspectRatio }
+        if available.contains(.crop) { engine.cropRatio = cropRatio }
+        if available.contains(.videoAdjustments) { engine.videoAdjustments = videoAdjustments }
+        if available.contains(.deinterlacing) { engine.deinterlace = deinterlace }
+        if available.contains(.stereoModes) { engine.stereoMode = stereoMode }
+        if available.contains(.equalizer) { engine.equalizer = equalizer }
+        if available.contains(.subtitleStyling) { engine.subtitleScale = subtitleSize.scale }
+    }
+
+    // MARK: - Picture in Picture and previews
+
+    /// VLC's Picture in Picture reports in through the video view; its
+    /// buttons drive this controller.
+    private func connectPictureInPicture() {
+        videoHost.windowRelay.setHandler { [weak self] window in
+            guard let self, self.activeEngine == .vlc else { return }
+            self.pictureInPicture.use(vlcWindow: window)
+        }
+        videoHost.mediaBridge.setActions(PictureInPictureMediaBridge.Actions(
+            play: { [weak self] in self?.play() },
+            pause: { [weak self] in self?.pause() },
+            skip: { [weak self] seconds in await self?.skip(by: seconds) }
+        ))
+    }
+
+    /// Keeps VLC's Picture in Picture window in step with playback.
+    private func updatePictureInPicture(invalidate: Bool) {
+        let snapshot = PictureInPictureMediaBridge.Snapshot(
+            timeMilliseconds: Int64((currentTime * 1_000).rounded()),
+            lengthMilliseconds: Int64(((duration ?? 0) * 1_000).rounded()),
+            isPlaying: isPlaying,
+            isSeekable: isSeekable
+        )
+        guard snapshot != lastPictureInPictureSnapshot else { return }
+        lastPictureInPictureSnapshot = snapshot
+        videoHost.mediaBridge.update(snapshot)
+        if invalidate {
+            pictureInPicture.playbackChanged()
+        }
+    }
+
+    private func prepareScrubPreviews() {
+        guard state == .playing, let item = currentItem else { return }
+        scrubPreviews.prepare(for: item, duration: duration, hasVideo: hasVideo)
+    }
+
     // MARK: - Engine switching
 
     /// Moves the current item to another engine at the same position.
@@ -451,6 +653,7 @@ public final class PlaybackController {
             if subtitleDelay != 0, capabilities.contains(.subtitleDelay) {
                 newEngine.subtitleDelay = subtitleDelay
             }
+            applyOptions(to: newEngine)
             if shouldPlay {
                 newEngine.play()
             }
@@ -481,6 +684,9 @@ public final class PlaybackController {
                 hasPlayedCurrentItem = true
             }
             setState(newState)
+            if newState == .playing {
+                prepareScrubPreviews()
+            }
         case .timeChanged(let time):
             guard !isScrubbing else { return }
             if let hold = seekHold {
@@ -491,9 +697,15 @@ public final class PlaybackController {
                 }
             }
             currentTime = time
+            if let target = abLoop.jumpTarget(at: time) {
+                Task { await seek(to: target) }
+            }
+            updatePictureInPicture(invalidate: false)
         case .durationChanged(let newDuration):
             duration = newDuration
             notify(.duration)
+            updatePictureInPicture(invalidate: true)
+            prepareScrubPreviews()
         case .bufferingChanged(let progress):
             bufferingProgress = progress
         case .rateChanged:
@@ -504,6 +716,7 @@ public final class PlaybackController {
             chapters = engine?.chapters ?? []
         case .videoDimensionsChanged(let dimensions):
             videoDimensions = dimensions
+            prepareScrubPreviews()
         case .metadataChanged(let newMetadata):
             var merged = newMetadata
             if let item = currentItem, item.libraryID != nil {
@@ -518,6 +731,8 @@ public final class PlaybackController {
             }
             metadata = merged
             notify(.metadata)
+        case .externalPlaybackChanged(let isActive):
+            isExternalPlaybackActive = isActive
         case .endOfMedia:
             currentTime = duration ?? currentTime
             notify(.endOfMedia)
@@ -559,6 +774,7 @@ public final class PlaybackController {
         guard newState != state else { return }
         state = newState
         notify(.state)
+        updatePictureInPicture(invalidate: true)
     }
 
     private func resetMediaState() {
@@ -576,6 +792,11 @@ public final class PlaybackController {
         isScrubbing = false
         seekHold = nil
         pendingTrackRestore = nil
+        aspectRatio = nil
+        cropRatio = nil
+        videoAdjustments = .neutral
+        deinterlace = .automatic
+        abLoop.clear()
     }
 
     private func notify(_ change: Change) {
@@ -619,3 +840,36 @@ public final class PlaybackController {
         }
     }
 }
+
+#if DEBUG
+extension PlaybackController {
+    /// Makes the controller look as if something is playing, without any
+    /// media: for SwiftUI previews and the player's snapshot tests.
+    public func showPreview(
+        item: PlaybackItem,
+        duration: TimeInterval,
+        time: TimeInterval,
+        isPlaying: Bool,
+        dimensions: VideoDimensions? = nil,
+        chapters: [Chapter] = [],
+        audioTracks: [MediaTrack] = [],
+        subtitleTracks: [MediaTrack] = [],
+        artwork: Data? = nil
+    ) {
+        currentItem = item
+        self.duration = duration
+        currentTime = time
+        state = isPlaying ? .playing : .paused
+        videoDimensions = dimensions
+        self.chapters = chapters
+        self.audioTracks = audioTracks
+        self.subtitleTracks = subtitleTracks
+        metadata = MediaMetadata(title: item.title, artist: item.artist, albumTitle: item.albumTitle, artworkData: artwork)
+        isSeekable = true
+        activeEngine = .vlc
+        capabilities = .vlc
+        routingReason = .unsupportedContainer("mkv")
+    }
+}
+#endif
+

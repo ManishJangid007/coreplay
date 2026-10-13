@@ -29,7 +29,8 @@ Progress against it is tracked in [`Docs/Milestones.md`](Docs/Milestones.md).
    or "Open Files…" on iPhone and iPad, or "Open in Coreplay" from Files.
 
 ⌘U runs the package tests (engine routing, queue behaviour, formatting) on
-the Mac. From Terminal, `bash Tools/build-check.sh` builds for macOS and the
+the Mac. The PlayerFeature tests also draw the player screens to PNG files in
+`build/snapshots`, so their layout can be checked without running the app. From Terminal, `bash Tools/build-check.sh` builds for macOS and the
 iOS Simulator and runs the tests, with logs in `build/` (ignored by git).
 `bash Tools/build-watch.sh` reruns that script whenever a `build/request` file
 appears, so Claude can start builds while you're away from the keyboard.
@@ -49,9 +50,11 @@ Docs/Milestones.md    Status, and what each milestone built, stubbed and changed
 Tools/                make_brand_assets.py (icons from Design/), build-check.sh
                       and build-watch.sh (command-line builds)
 Packages/
-  PlaybackEngine/     PlaybackCore (protocol, events, router; Foundation only)
+  PlaybackEngine/     PlaybackCore (protocol, events, router, player options;
+                      Foundation only)
                       PlaybackEngine (VLCKitEngine, AVPlayerEngine, prober,
-                      PlaybackController, VideoSurface). The only code that imports VLCKit.
+                      PlaybackController, VideoSurface, Picture in Picture,
+                      scrub previews). The only code that imports VLCKit.
   NowPlaying/         PlaybackSession, Up Next queue, MPNowPlayingInfoCenter,
                       remote commands, audio session
   DesignSystem/       Palette, metrics, motion, artwork views, artwork-derived
@@ -59,13 +62,16 @@ Packages/
                       badges, Cover Flow
   Features/           HomeFeature, MusicFeature, VideoFeature (movies, shows,
                       home videos, Fix Match, artwork), LibraryFeature (Sources),
-                      SearchFeature, PlayerFeature, SettingsFeature
+                      SearchFeature, PlayerFeature (video player, Now Playing,
+                      the options panel), SettingsFeature
   MediaLibrary/       SwiftData model (versioned, with migrations), sources and
-                      bookmarks, the scanner, TMDB lookups, video frames as
-                      artwork, artwork cache, play counts and watched state, Edit Info
+                      bookmarks, the scanner, TMDB and keyless lookups, video
+                      frames as artwork, artwork cache, play counts and watched
+                      state, Edit Info
   MetadataProviders/  Embedded tag reader (ID3, FLAC/Ogg, MP4, APE, WAV/AIFF),
                       file-name fallbacks, name keys, video names and container
-                      details (MP4, MKV, AVI), .nfo files, the TMDB client
+                      details (MP4, MKV, AVI), .nfo files, the TMDB, TVmaze
+                      and Wikipedia clients
   Networking/         Placeholder (Milestone 7)
 ```
 
@@ -84,7 +90,7 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
  Sources (folders, "On My iPhone", ~/Music)  ──▶  LibraryIndexer (background SwiftData context)
                                                     │  songs: TagReader + PathMetadata
                                                     │  videos: VideoProbe + VideoNameParser + .nfo + local posters
-                                                    │  then TMDB lookups and frames from the videos
+                                                    │  then lookups (TMDB, or TVmaze and Wikipedia) and frames
                                                     │  ArtworkStore: thumbnail, grid and large JPEGs
                                                     ▼
           Source · MediaFile · Track · Album · Artist · Genre · Video · TVShow · Season · PlaybackRecord
@@ -116,6 +122,10 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **TMDB** (Settings ▸ Metadata, with your own key) fills in posters,
   backdrops, synopses, cast and episode titles, a few items at a time in the
   background. Fix Match picks a different entry; Edit Info changes stick.
+- **Without a key**, TVmaze fills in TV shows and Wikipedia (with Wikidata)
+  fills in movies: posters, synopses, and episode titles and stills. Movie
+  and show pages credit them, as CC BY-SA asks. Settings ▸ Metadata ▸ Free
+  Sources turns them off; adding a TMDB key replaces their results.
 - **Video artwork**: anything without a poster or still gets a frame from
   about a tenth of the way in; Choose Artwork picks another frame or an image.
 - **Watched state** follows the TV app: resume after the first minute, watched
@@ -154,6 +164,16 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   controller. `VideoSurface` borrows it while on screen, so re-opening the
   player never rebuilds VLC's video output, and VLC is never allowed to open
   a window of its own.
+- **Options.** Shape, crop, colours, deinterlacing, channels, the equalizer
+  and subtitle size are VLC's, so choosing one hands an AVFoundation item to
+  VLC at the same position. The controller keeps the chosen options and
+  applies them to whichever engine is playing.
+- **Picture in Picture.** `PictureInPicture` wraps Apple's controller for
+  AVFoundation and VLCKit 4's PiP protocols for VLC (the video view is the
+  `VLCPictureInPictureDrawable`).
+- **Scrub previews.** `ScrubPreviews` makes up to 200 small frames per local
+  video in the background, coarse to fine, and keeps finished sets in
+  Caches/Coreplay/Scrub Previews.
 
 ## Brand
 
@@ -173,3 +193,7 @@ VLCKit and libVLC are LGPL 2.1 or later. Coreplay links the official VLCKit
 binary dynamically and unmodified, and shows the licence and source offer in
 Settings ▸ About ▸ Acknowledgements. No code is copied from the GPL-licensed VLC
 apps. This is a personal project; get legal advice before any public release.
+
+TVmaze and Wikipedia text is CC BY-SA, credited where it appears. Many film
+posters on Wikipedia are non-free images used there under fair use: fine for a
+personal library, but check before shipping them in a public app.
