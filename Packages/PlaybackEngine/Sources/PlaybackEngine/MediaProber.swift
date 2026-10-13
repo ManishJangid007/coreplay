@@ -38,7 +38,9 @@ actor MediaProber {
             let (isPlayable, hasProtectedContent, tracks) = try await asset.load(.isPlayable, .hasProtectedContent, .tracks)
             var probedTracks: [MediaProbe.Track] = []
             for track in tracks {
-                let (mediaType, formatDescriptions, trackIsPlayable) = try await track.load(.mediaType, .formatDescriptions, .isPlayable)
+                // mediaType is a plain property; only the others are loaded asynchronously.
+                let mediaType = track.mediaType
+                let (formatDescriptions, trackIsPlayable) = try await track.load(.formatDescriptions, .isPlayable)
                 let kind: MediaProbe.Track.Kind
                 switch mediaType {
                 case .video, .muxed:

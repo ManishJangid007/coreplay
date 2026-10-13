@@ -23,6 +23,13 @@
 		609B94788D1E9F520B6F0170 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		1012C39740C4F006465C8BE1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Coreplay-macOS.entitlements"; sourceTree = "<group>"; };
+		BBEF4412B6B9F9A4CE98C62D /* DesignSystem */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DesignSystem; sourceTree = "<group>"; };
+		E3C320FA32A299355063E560 /* PlaybackEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = PlaybackEngine; sourceTree = "<group>"; };
+		183B2EA300D54C6A4A6D1A8C /* NowPlaying */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = NowPlaying; sourceTree = "<group>"; };
+		1E8900DE111B1B17413B08D8 /* MediaLibrary */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MediaLibrary; sourceTree = "<group>"; };
+		A405DFE7E9CD68BF286D0268 /* MetadataProviders */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = MetadataProviders; sourceTree = "<group>"; };
+		6116F1FE271B7D20A8B69077 /* Networking */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Networking; sourceTree = "<group>"; };
+		190EF2A688276E59E435FC63 /* Features */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Features; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -63,6 +70,7 @@
 			children = (
 				A24A7BF0773424745C04AD39 /* App */,
 				393E19BC3BE9F1080375E942 /* Config */,
+				E6F021E9F05AEEA32B17BFA2 /* Packages */,
 				E4C805FC033343202B0A9F0C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,6 +108,20 @@
 				7FE2580990AEE05EDD8337B0 /* Coreplay-macOS.entitlements */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		E6F021E9F05AEEA32B17BFA2 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				BBEF4412B6B9F9A4CE98C62D /* DesignSystem */,
+				E3C320FA32A299355063E560 /* PlaybackEngine */,
+				183B2EA300D54C6A4A6D1A8C /* NowPlaying */,
+				1E8900DE111B1B17413B08D8 /* MediaLibrary */,
+				A405DFE7E9CD68BF286D0268 /* MetadataProviders */,
+				6116F1FE271B7D20A8B69077 /* Networking */,
+				190EF2A688276E59E435FC63 /* Features */,
+			);
+			path = Packages;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -161,15 +183,6 @@
 			);
 			mainGroup = C00CA25610F9DA71C1DBD08D;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				3FD69ABAB4BDA3EFF3197412 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */,
-				00D382FBBF561C39296F2FDF /* XCLocalSwiftPackageReference "Packages/PlaybackEngine" */,
-				72DAD8BC9B8C70A3EEF41D23 /* XCLocalSwiftPackageReference "Packages/NowPlaying" */,
-				850BA53B8F39D933F3C7DDBF /* XCLocalSwiftPackageReference "Packages/MediaLibrary" */,
-				E7353BDD92CC8B581DB6DFF5 /* XCLocalSwiftPackageReference "Packages/MetadataProviders" */,
-				4FCA961AC8134CBC0D89F23B /* XCLocalSwiftPackageReference "Packages/Networking" */,
-				D609BEB5B7438681293A9521 /* XCLocalSwiftPackageReference "Packages/Features" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E4C805FC033343202B0A9F0C /* Products */;
 			projectDirPath = "";
@@ -436,37 +449,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		3FD69ABAB4BDA3EFF3197412 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/DesignSystem;
-		};
-		00D382FBBF561C39296F2FDF /* XCLocalSwiftPackageReference "Packages/PlaybackEngine" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/PlaybackEngine;
-		};
-		72DAD8BC9B8C70A3EEF41D23 /* XCLocalSwiftPackageReference "Packages/NowPlaying" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/NowPlaying;
-		};
-		850BA53B8F39D933F3C7DDBF /* XCLocalSwiftPackageReference "Packages/MediaLibrary" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/MediaLibrary;
-		};
-		E7353BDD92CC8B581DB6DFF5 /* XCLocalSwiftPackageReference "Packages/MetadataProviders" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/MetadataProviders;
-		};
-		4FCA961AC8134CBC0D89F23B /* XCLocalSwiftPackageReference "Packages/Networking" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/Networking;
-		};
-		D609BEB5B7438681293A9521 /* XCLocalSwiftPackageReference "Packages/Features" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/Features;
-		};
-/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		EF4CA76194E02CD01CF64160 /* DesignSystem */ = {

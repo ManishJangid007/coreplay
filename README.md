@@ -10,7 +10,7 @@ Progress against it is tracked in [`Docs/Milestones.md`](Docs/Milestones.md).
 
 ## Requirements
 
-- Xcode 26 or later (Swift 6.2 toolchain)
+- Xcode 26 or later (last built with Xcode 26.4.1 on macOS 26.6)
 - iOS / iPadOS 26 and macOS 26 deployment targets (one multiplatform target, native macOS, not Catalyst)
 - An Apple ID added in Xcode ▸ Settings ▸ Accounts for signing
 
@@ -28,9 +28,11 @@ Progress against it is tracked in [`Docs/Milestones.md`](Docs/Milestones.md).
    double-click a media file and choose Coreplay on the Mac; the **+** button
    or "Open Files…" on iPhone and iPad, or "Open in Coreplay" from Files.
 
-⌘U runs the unit tests in the packages (engine routing, queue behaviour,
-formatting). The pure-Swift parts also build and test with plain
-`swift test` from `Packages/PlaybackEngine` and `Packages/NowPlaying` on a Mac.
+⌘U runs the package tests (engine routing, queue behaviour, formatting) on
+the Mac. From Terminal, `bash Tools/build-check.sh` builds for macOS and the
+iOS Simulator and runs the tests, with logs in `build/` (ignored by git).
+`bash Tools/build-watch.sh` reruns that script whenever a `build/request` file
+appears, so Claude can start builds while you're away from the keyboard.
 
 ## Layout
 
@@ -43,7 +45,8 @@ App/
 Config/Base.xcconfig  Team, bundle ID prefix, version
 Design/               Source artwork for the logo and app icon
 Docs/Milestones.md    Status, and what each milestone built, stubbed and changed
-Tools/                make_brand_assets.py: regenerates the icons from Design/
+Tools/                make_brand_assets.py (icons from Design/), build-check.sh
+                      and build-watch.sh (command-line builds)
 Packages/
   PlaybackEngine/     PlaybackCore (protocol, events, router; Foundation only)
                       PlaybackEngine (VLCKitEngine, AVPlayerEngine, prober,
@@ -61,6 +64,11 @@ Packages/
 The app target uses folder-synchronized groups: new files in `App/Coreplay` or
 `App/Platform` are picked up without editing the project. Files under
 `Platform/iOS` and `Platform/macOS` are wrapped in `#if os(…)`.
+
+The packages are referenced by folder (the **Packages** group), so Xcode treats
+them as part of the project: you can edit them, see their warnings and run their
+tests. Don't re-add them with **Add Package Dependencies ▸ Add Local**, which makes
+Xcode treat them as outside dependencies with hidden warnings and no tests.
 
 ## How playback works
 
