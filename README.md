@@ -30,7 +30,9 @@ Progress against it is tracked in [`Docs/Milestones.md`](Docs/Milestones.md).
 
 ⌘U runs the package tests (engine routing, queue behaviour, formatting) on
 the Mac. The PlayerFeature tests also draw the player screens to PNG files in
-`build/snapshots`, so their layout can be checked without running the app. From Terminal, `bash Tools/build-check.sh` builds for macOS and the
+`build/snapshots`, so their layout can be checked without running the app, and
+the PlaybackEngine tests play a generated movie through both engines in a small
+window (a lock-up is sampled into `build/hang-<test>.txt`). From Terminal, `bash Tools/build-check.sh` builds for macOS and the
 iOS Simulator and runs the tests, with logs in `build/` (ignored by git).
 `bash Tools/build-watch.sh` reruns that script whenever a `build/request` file
 appears, so Claude can start builds while you're away from the keyboard.
@@ -160,6 +162,10 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   turns those calls into values on an `AsyncStream`, consumed on the main
   actor. AVFoundation KVO, notifications and time observers hop to the main
   actor explicitly. Nothing depends on which thread a framework calls back on.
+- **Threads.** libVLC calls that reach into a running video output (picture
+  options, the equalizer, snapshots) run on the VLC engine's own queue, never
+  the main thread: the output takes its lock while it waits for the main
+  thread to set up its view, so those calls would deadlock there.
 - **Video.** Both engines render into one `PlatformVideoView` owned by the
   controller. `VideoSurface` borrows it while on screen, so re-opening the
   player never rebuilds VLC's video output, and VLC is never allowed to open

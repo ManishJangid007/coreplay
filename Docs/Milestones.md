@@ -153,6 +153,18 @@ These come on top of the plan; nothing in the plan was dropped for them.
   - AirPlay;
   - anything on iPhone or iPad.
 
+**Fixed after this report: VLC movies stuck on "loading"** (you found it)
+- **The cause:** a deadlock. When a video started, the engine applied the picture options again on the main thread. Each one waits for the video output's lock. libVLC holds that lock while it creates the output, and creating it waits for the main thread to set up its view. A sample of the stuck process showed exactly that.
+- **The fix:**
+  - option changes now reach libVLC on a background queue, never the main thread;
+  - when a video starts, only the options you changed are applied again, so a plain movie doesn't touch the video output at all;
+  - Picture in Picture only updates VLC's window while it's showing.
+- **New playback tests** (PlaybackEngineTests) play a generated movie through both engines in a small window:
+  - VLC plays three times after AVFoundation, the order that froze;
+  - one run sets every option while the video opens;
+  - if anything locks up, a watchdog samples every thread into `build/hang-<test>.txt` and ends the run, so the build script can't hang;
+  - all 184 tests pass.
+
 ### Stubbed or deferred
 - **Milestone 6 (VLC parity):**
   - subtitle style beyond size (font, colour, outline, background, position, text encoding, two tracks at once);

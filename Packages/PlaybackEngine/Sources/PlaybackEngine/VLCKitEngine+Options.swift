@@ -7,107 +7,157 @@ import PlaybackCore
 // setCropRatioWithNumerator(_:denominator:), adjustFilter, setDeinterlace,
 // audioStereoMode, equalizer, currentSubTitleFontScale, gotoNextFrame,
 // gotoPreviousFrame, saveVideoSnapshot(at:withWidth:andHeight:)).
+//
+// None of them run on the main thread. Each reaches into the running video
+// (or audio) output and waits for its lock, and libVLC holds that lock while
+// the output is being created, which on macOS and iOS waits for the main
+// thread to set up its view. Called from the main thread just as a video
+// started, they deadlocked the app: every movie stayed on "loading".
+
+/// The player, carried to `VLCKitEngine.outputQueue`. libVLC is thread-safe,
+/// and the VLCKit setters used there are thin wrappers around it.
+private struct OutputPlayer: @unchecked Sendable {
+    let player: VLCMediaPlayer
+}
 
 extension VLCKitEngine {
-    func applyAllOptions() {
-        applyFillMode()
-        applyAspectRatio()
-        applyCrop()
-        applyAdjustments()
-        applyDeinterlace()
-        applyStereoMode()
-        applyEqualizer()
-        if subtitleScale != 1 {
-            player.currentSubTitleFontScale = subtitleScale
+    /// Runs `work` with the player on the engine's serial output queue.
+    func onOutputQueue(_ work: @escaping @Sendable (VLCMediaPlayer) -> Void) {
+        let target = OutputPlayer(player: player)
+        outputQueue.async {
+            work(target.player)
         }
     }
 
+    /// Applies again whatever differs from libVLC's defaults, once the
+    /// output exists. Defaults need nothing, so a plain movie touches nothing.
+    func applyChosenOptions() {
+        if fillMode != .fit { applyFillMode() }
+        if aspectRatio != nil { applyAspectRatio() }
+        if cropRatio != nil { applyCrop() }
+        if !videoAdjustments.isNeutral { applyAdjustments() }
+        if deinterlace != .automatic { applyDeinterlace() }
+        if stereoMode != .automatic { applyStereoMode() }
+        if equalizer.isEnabled { applyEqualizer() }
+        if subtitleScale != 1 { applySubtitleScale() }
+    }
+
     func applyFillMode() {
-        switch fillMode {
-        case .fit: player.videoFitMode = .smaller
-        case .fill: player.videoFitMode = .larger
+        let mode: VLCMediaPlayer.VideoFitMode = fillMode == .fill ? .larger : .smaller
+        onOutputQueue { player in
+            player.videoFitMode = mode
         }
     }
 
     func applyAspectRatio() {
-        player.videoAspectRatio = aspectRatio?.description
+        let ratio = aspectRatio?.description
+        onOutputQueue { player in
+            player.videoAspectRatio = ratio
+        }
     }
 
     func applyCrop() {
-        if let cropRatio {
-            player.setCropRatioWithNumerator(UInt32(cropRatio.width), denominator: UInt32(cropRatio.height))
-        } else {
-            player.setCropRatioWithNumerator(0, denominator: 0)
+        let numerator = UInt32(cropRatio?.width ?? 0)
+        let denominator = UInt32(cropRatio?.height ?? 0)
+        onOutputQueue { player in
+            // 0:0 removes the crop.
+            player.setCropRatioWithNumerator(numerator, denominator: denominator)
         }
     }
 
     func applyAdjustments() {
         let values = videoAdjustments.clamped
-        let filter = player.adjustFilter
-        if values.isNeutral {
-            _ = filter.resetParametersIfNeeded()
-            filter.isEnabled = false
-            return
+        onOutputQueue { player in
+            let filter = player.adjustFilter
+            if values.isNeutral {
+                _ = filter.resetParametersIfNeeded()
+                filter.isEnabled = false
+                return
+            }
+            filter.brightness.value = NSNumber(value: values.brightness)
+            filter.contrast.value = NSNumber(value: values.contrast)
+            filter.saturation.value = NSNumber(value: values.saturation)
+            filter.hue.value = NSNumber(value: values.hue)
+            filter.gamma.value = NSNumber(value: values.gamma)
+            filter.isEnabled = true
         }
-        filter.brightness.value = NSNumber(value: values.brightness)
-        filter.contrast.value = NSNumber(value: values.contrast)
-        filter.saturation.value = NSNumber(value: values.saturation)
-        filter.hue.value = NSNumber(value: values.hue)
-        filter.gamma.value = NSNumber(value: values.gamma)
-        filter.isEnabled = true
     }
 
     func applyDeinterlace() {
-        switch deinterlace {
-        case .automatic: player.setDeinterlace(.auto, withFilter: "yadif")
-        case .on: player.setDeinterlace(.on, withFilter: "yadif")
-        case .off: player.setDeinterlace(.off, withFilter: "yadif")
+        let mode: VLCDeinterlace = switch deinterlace {
+        case .automatic: .auto
+        case .on: .on
+        case .off: .off
+        }
+        onOutputQueue { player in
+            player.setDeinterlace(mode, withFilter: "yadif")
         }
     }
 
     func applyStereoMode() {
-        switch stereoMode {
-        case .automatic: player.audioStereoMode = .unset
-        case .stereo: player.audioStereoMode = .stereo
-        case .mono: player.audioStereoMode = .mono
-        case .left: player.audioStereoMode = .left
-        case .right: player.audioStereoMode = .right
-        case .reversed: player.audioStereoMode = .rStereo
-        case .dolbySurround: player.audioStereoMode = .dolbys
+        let mode: VLCMediaPlayer.AudioStereoMode = switch stereoMode {
+        case .automatic: .unset
+        case .stereo: .stereo
+        case .mono: .mono
+        case .left: .left
+        case .right: .right
+        case .reversed: .rStereo
+        case .dolbySurround: .dolbys
+        }
+        onOutputQueue { player in
+            player.audioStereoMode = mode
         }
     }
 
     /// libVLC copies the equalizer's values when it's assigned, so a fresh
     /// one is built and assigned on every change.
     func applyEqualizer() {
-        guard equalizer.isEnabled else {
-            player.equalizer = nil
-            return
+        let settings = equalizer
+        onOutputQueue { player in
+            guard settings.isEnabled else {
+                player.equalizer = nil
+                return
+            }
+            let vlcEqualizer = VLCAudioEqualizer()
+            vlcEqualizer.preAmplification = settings.preamp
+            for (index, band) in vlcEqualizer.bands.enumerated() where settings.bands.indices.contains(index) {
+                band.amplification = settings.bands[index]
+            }
+            player.equalizer = vlcEqualizer
         }
-        let vlcEqualizer = VLCAudioEqualizer()
-        vlcEqualizer.preAmplification = equalizer.preamp
-        for (index, band) in vlcEqualizer.bands.enumerated() where equalizer.bands.indices.contains(index) {
-            band.amplification = equalizer.bands[index]
+    }
+
+    func applySubtitleScale() {
+        let scale = subtitleScale
+        onOutputQueue { player in
+            player.currentSubTitleFontScale = scale
         }
-        player.equalizer = vlcEqualizer
     }
 
     func stepFrame(forward: Bool) {
-        if forward {
-            player.gotoNextFrame()
-        } else {
-            player.gotoPreviousFrame()
+        onOutputQueue { player in
+            if forward {
+                player.gotoNextFrame()
+            } else {
+                player.gotoPreviousFrame()
+            }
         }
     }
 
     /// libVLC writes the file on its own thread; wait (up to three seconds)
     /// for it to appear.
     func saveSnapshot(to url: URL) async throws {
-        guard player.hasVideoOut else {
+        // (Not `player.hasVideoOut` here: it waits for the same locks.)
+        guard videoDimensions != nil else {
             throw PlaybackError(.engineFailure, "There\u{2019}s no picture to save.")
         }
         try? FileManager.default.removeItem(at: url)
-        player.saveVideoSnapshot(at: url.path, withWidth: 0, andHeight: 0)
+        let path = url.path
+        onOutputQueue { player in
+            // VLCKit raises an exception when there's no video output.
+            guard player.hasVideoOut else { return }
+            player.saveVideoSnapshot(at: path, withWidth: 0, andHeight: 0)
+        }
         for _ in 0..<30 {
             try await Task.sleep(for: .milliseconds(100))
             if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 {

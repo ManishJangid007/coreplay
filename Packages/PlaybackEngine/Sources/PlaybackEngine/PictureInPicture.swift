@@ -146,7 +146,11 @@ public final class PictureInPicture {
     }
 
     /// VLC's window needs to know playback changed (play/pause, seeks).
+    /// Only while it's showing: it reads the state itself when it opens, and
+    /// calls into libVLC's video output are kept off the main thread
+    /// otherwise (see VLCKitEngine+Options.swift).
     func playbackChanged() {
+        guard isActive else { return }
         vlcWindow?.invalidate()
     }
 

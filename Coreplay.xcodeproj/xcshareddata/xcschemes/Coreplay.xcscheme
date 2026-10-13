@@ -44,6 +44,16 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "PlaybackEngineTests"
+               BuildableName = "PlaybackEngineTests"
+               BlueprintName = "PlaybackEngineTests"
+               ReferencedContainer = "container:Packages/PlaybackEngine">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "NowPlayingTests"
                BuildableName = "NowPlayingTests"
                BlueprintName = "NowPlayingTests"

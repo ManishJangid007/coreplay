@@ -34,5 +34,11 @@ let package = Package(
             name: "PlaybackCoreTests",
             dependencies: ["PlaybackCore"]
         ),
+        // Plays a generated movie through both engines on the Mac (needs a
+        // window server, so it doesn't run in the Linux harness).
+        .testTarget(
+            name: "PlaybackEngineTests",
+            dependencies: ["PlaybackEngine", "PlaybackCore", "VLCKit"]
+        ),
     ]
 )

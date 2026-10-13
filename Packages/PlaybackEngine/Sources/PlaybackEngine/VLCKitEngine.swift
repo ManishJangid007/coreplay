@@ -53,12 +53,15 @@ final class VLCKitEngine: PlaybackEngine {
     private var fallbackDrawable: PlatformView?
     private var lastArtworkIdentity: ObjectIdentifier?
     private var lastArtworkData: Data?
-    /// Set once per item when the picture options have been applied to a
-    /// running video output (libVLC keeps some of them per output).
+    /// Set once per item when the chosen options have been applied again to
+    /// the running video output (libVLC keeps some of them per output).
     private var appliedPictureOptions = false
+    /// Where option changes reach libVLC; see `onOutputQueue(_:)`.
+    let outputQueue = DispatchQueue(label: "Coreplay.VLCKitEngine.output", qos: .userInitiated)
 
-    // Level 2 options. Setters apply straight away; picture options are
-    // applied again when playback starts, once the video output exists.
+    // Level 2 options. Setters apply straight away (on `outputQueue`); options
+    // that differ from libVLC's defaults are applied again once playback
+    // starts and the video output exists.
     var fillMode: VideoFillMode = .fit {
         didSet { applyFillMode() }
     }
@@ -81,7 +84,7 @@ final class VLCKitEngine: PlaybackEngine {
         didSet { applyEqualizer() }
     }
     var subtitleScale: Float = 1 {
-        didSet { player.currentSubTitleFontScale = subtitleScale }
+        didSet { applySubtitleScale() }
     }
 
     /// Engines whose player hadn't confirmed its stop when they were shut down.
@@ -348,7 +351,7 @@ final class VLCKitEngine: PlaybackEngine {
             hasPlayedCurrentMedia = true
             if !appliedPictureOptions {
                 appliedPictureOptions = true
-                applyAllOptions()
+                applyChosenOptions()
             }
             setState(.playing)
             updateDuration(milliseconds: nil)
