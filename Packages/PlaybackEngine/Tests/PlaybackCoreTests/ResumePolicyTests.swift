@@ -13,6 +13,14 @@ struct ResumePolicyTests {
         #expect(ResumePolicy.outcome(position: .nan, duration: 6_000) == .fromStart)
     }
 
+    @Test func endCreditsCountAsWatched() {
+        // A 45-minute episode whose credits start at 39 minutes (87%).
+        #expect(ResumePolicy.outcome(position: 2_340, duration: 2_700, creditsStart: 2_340) == .watched)
+        // Sampled a couple of seconds before the credits still counts.
+        #expect(ResumePolicy.outcome(position: 2_337, duration: 2_700, creditsStart: 2_340) == .watched)
+        #expect(ResumePolicy.outcome(position: 2_000, duration: 2_700, creditsStart: 2_340) == .resume(at: 2_000))
+    }
+
     @Test func startPositions() {
         #expect(ResumePolicy.startPosition(saved: 1_234, duration: 6_000) == 1_234)
         #expect(ResumePolicy.startPosition(saved: 20, duration: 6_000) == nil)
@@ -54,6 +62,13 @@ struct WatchProgressTrackerTests {
         #expect(tracker.update(itemID: episode, position: 2_450, duration: 2_600, isPlaying: true).isEmpty)
         // The next episode starting doesn't re-save the watched one.
         #expect(tracker.update(itemID: movie, position: 0, duration: 6_000, isPlaying: true).isEmpty)
+    }
+
+    @Test func skippingToTheNextEpisodeAtTheCreditsMarksItWatched() {
+        var tracker = WatchProgressTracker()
+        _ = tracker.update(itemID: episode, position: 2_300, duration: 2_700, isPlaying: true, creditsStart: 2_340)
+        let saves = tracker.update(itemID: episode, position: 2_342, duration: 2_700, isPlaying: true, creditsStart: 2_340)
+        #expect(saves.map(\.outcome) == [.watched])
     }
 
     @Test func savesTheOldItemWhenReplaced() {

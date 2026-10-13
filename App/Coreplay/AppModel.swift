@@ -142,7 +142,8 @@ final class AppModel {
                 }
                 // Videos from the library: resume positions and watched state.
                 let videoID = item?.kind == .video && item?.libraryID != nil ? item?.id : nil
-                for save in progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying) {
+                let credits = UpNextPolicy.creditsStart(chapters: controller.chapters, duration: controller.duration)
+                for save in progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying, creditsStart: credits) {
                     guard let libraryID = libraryIDs[save.itemID] else { continue }
                     self.library.recordProgress(libraryID: libraryID, position: save.position, duration: save.duration, outcome: save.outcome)
                     if save.itemID != item?.id {

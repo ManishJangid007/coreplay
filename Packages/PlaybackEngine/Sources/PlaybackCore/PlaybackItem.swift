@@ -33,6 +33,12 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
     /// library. Library items keep their (possibly user-edited) title, artist
     /// and artwork instead of whatever the engine reads from the file.
     public var libraryID: UUID?
+    /// A short clip behind a title (the hero carousel's preview): no
+    /// subtitles, no AirPlay, no Picture in Picture, and the screen may sleep.
+    public var isPreview: Bool
+    /// `false` opens no audio output at all, so a silent preview never
+    /// interrupts music playing in another app.
+    public var playsAudio: Bool
 
     public init(
         id: UUID = UUID(),
@@ -46,7 +52,9 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
         enginePreference: EnginePreference = .automatic,
         externalSubtitleURLs: [URL] = [],
         requiresSecurityScope: Bool = false,
-        libraryID: UUID? = nil
+        libraryID: UUID? = nil,
+        isPreview: Bool = false,
+        playsAudio: Bool = true
     ) {
         self.id = id
         self.url = url
@@ -60,6 +68,8 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
         self.externalSubtitleURLs = externalSubtitleURLs
         self.requiresSecurityScope = requiresSecurityScope
         self.libraryID = libraryID
+        self.isPreview = isPreview
+        self.playsAudio = playsAudio
     }
 
     /// A readable title derived from a URL, used until real metadata arrives.

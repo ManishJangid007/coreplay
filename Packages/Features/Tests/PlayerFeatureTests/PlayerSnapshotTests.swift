@@ -140,6 +140,18 @@ struct PlayerSnapshotTests {
         try render(view, name: "playback-bar")
     }
 
+    @Test func upNextCard() throws {
+        let item = PlaybackItem(url: URL(fileURLWithPath: "/TV/Quiet Harbour S01E06.mkv"), kind: .video, title: "Storm Season", artist: "Quiet Harbour \u{00B7} S1, E6")
+        let view = VStack(alignment: .trailing, spacing: 20) {
+            UpNextCard(item: item, countdown: UpNextPolicy.Countdown(remaining: 6.2, total: 10), onPlay: {}, onDismiss: {})
+            UpNextCard(item: item, countdown: nil, onPlay: {}, onDismiss: {})
+        }
+        .padding(30)
+        .frame(width: 560)
+        .background(LinearGradient(colors: [Color(white: 0.4), Color(white: 0.15)], startPoint: .top, endPoint: .bottom))
+        try render(view, name: "up-next-card")
+    }
+
     @Test func scrubberWithChapters() throws {
         let view = PlaybackScrubber(
             position: 1_800,

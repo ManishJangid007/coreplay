@@ -112,6 +112,14 @@ final class VLCKitEngine: PlaybackEngine {
         }
     }
 
+    /// libVLC's own Theora decoder makes VLCKit 4.0.0a25's macOS video
+    /// output fail an OpenGL check, which aborts the app (development builds
+    /// keep their assertions). FFmpeg's decoder plays the same files fine, so
+    /// Ogg video uses it first.
+    nonisolated static func prefersFFmpegDecoders(_ url: URL) -> Bool {
+        ["ogv", "ogm", "ogx"].contains(url.pathExtension.lowercased())
+    }
+
     // MARK: - Transport
 
     var currentTime: TimeInterval {
@@ -149,6 +157,18 @@ final class VLCKitEngine: PlaybackEngine {
             // Never open a video output for music (embedded cover art would
             // otherwise become a "video" track on some containers).
             media.addOption(":no-video")
+        }
+        if Self.prefersFFmpegDecoders(item.url) {
+            media.addOption(":codec=avcodec,all")
+        }
+        if item.isPreview {
+            // A clip behind a title: no subtitles, and no looking for subtitle files.
+            media.addOption(":no-spu")
+            media.addOption(":no-sub-autodetect-file")
+        }
+        if !item.playsAudio {
+            // No audio output at all, so nothing else that's playing is interrupted.
+            media.addOption(":no-audio")
         }
         if let start = item.startPosition, start > 0 {
             media.addOption(":start-time=\(start)")

@@ -54,6 +54,14 @@ final class AudioSessionController {
         }
     }
 
+    /// Before a silent preview clip plays while nothing else of ours is
+    /// playing: the ambient category mixes with other apps' audio and follows
+    /// the Ring/Silent switch, so a preview never stops someone's music.
+    func prepareForPreview() {
+        guard !isActive else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+    }
+
     func deactivate() {
         guard isActive else { return }
         isActive = false

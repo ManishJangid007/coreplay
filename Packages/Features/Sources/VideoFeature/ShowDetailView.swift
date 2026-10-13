@@ -5,13 +5,13 @@ import PlaybackCore
 import SwiftData
 import SwiftUI
 
-/// A show's page, as in the TV app: the backdrop and title, a button for
-/// the episode to watch next, seasons, and each season's episodes with their
-/// stills and watched state.
+/// A show's page, as in the TV app: the artwork with the title, what it's
+/// about and one button that carries on where you left off ("Resume S1, E5",
+/// "Play S1, E6" or "Play First Episode"); then a season menu over a row of
+/// wide episode cards that starts at the episode you're up to, the cast, and
+/// the details.
 public struct ShowDetailView: View {
     @Environment(LibraryManager.self) private var library
-    @Environment(PlaybackSession.self) private var session
-    @Environment(\.appActions) private var actions
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -25,10 +25,6 @@ public struct ShowDetailView: View {
         self.focusing = focusing
     }
 
-    private var playback: VideoPlayback {
-        VideoPlayback(library: library, session: session, actions: actions)
-    }
-
     private var isCompact: Bool {
         #if os(iOS)
         sizeClass == .compact
@@ -40,30 +36,31 @@ public struct ShowDetailView: View {
     public var body: some View {
         let seasons = show.orderedSeasons.filter { !$0.episodes.isEmpty }
         let season = seasons.first { $0.number == selectedSeason } ?? seasons.first
+        let next = library.nextUp(in: show)
+        let hasStarted = show.episodes.contains { library.watchState(for: $0)?.lastPlayedDate != nil }
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                hero(seasonCount: seasons.count { $0.number > 0 })
-                VStack(alignment: .leading, spacing: 22) {
-                    if let overview = show.overview {
-                        Text(overview)
-                            .frame(maxWidth: 760, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-                    if seasons.count > 1 {
-                        seasonPicker(seasons, selected: season?.number)
+                ShowHero(show: show, next: next, hasStarted: hasStarted, seasonCount: seasons.count { $0.number > 0 }, isCompact: isCompact)
+                VStack(alignment: .leading, spacing: 34) {
+                    if isCompact {
+                        ShowSummary(show: show)
                     }
                     if let season {
-                        SeasonEpisodes(season: season, isCompact: isCompact)
+                        SeasonEpisodesSection(
+                            seasons: seasons,
+                            season: season,
+                            selectedSeason: $selectedSeason,
+                            upNext: hasStarted ? next : nil,
+                            isCompact: isCompact
+                        )
                     }
                     if !show.cast.isEmpty {
                         CastShelf(cast: show.cast)
                     }
-                    if let credit = MetadataCredit.forShow(show) {
-                        MetadataCreditView(credit: credit)
-                    }
+                    ShowAboutSection(show: show, seasonCount: seasons.count { $0.number > 0 })
                 }
                 .padding(Metrics.contentPadding)
-                .padding(.top, 8)
+                .padding(.top, 6)
             }
         }
         .ignoresSafeArea(edges: .top)
@@ -83,103 +80,274 @@ public struct ShowDetailView: View {
         }
         .onAppear {
             if selectedSeason == nil {
-                selectedSeason = focusing?.seasonNumber ?? library.nextUp(in: show)?.video.seasonNumber ?? seasons.first?.number
+                selectedSeason = focusing?.seasonNumber ?? next?.video.seasonNumber ?? seasons.first?.number
             }
         }
     }
+}
 
-    private func hero(seasonCount: Int) -> some View {
-        let next = library.nextUp(in: show)
-        return ZStack(alignment: .bottomLeading) {
-            HeroBackdrop(imageURL: library.artworkURL(show.backdropKey ?? show.posterArtworkKey, .large), height: isCompact ? 400 : 500)
-            VStack(alignment: .leading, spacing: 10) {
-                Text(show.title)
-                    .font(.largeTitle.bold())
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                Text(infoLine(seasonCount: seasonCount))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.8))
-                if let next {
-                    HStack(spacing: 12) {
-                        Button {
-                            playback.play(next.video)
-                        } label: {
-                            Label(buttonTitle(next), systemImage: "play.fill")
-                                .frame(minWidth: 130)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .controlSize(.large)
-                        if let remaining = library.watchState(for: next.video)?.remaining {
-                            Text(VideoFormat.remaining(remaining))
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
+// MARK: - Header
+
+/// The top of a show's page: artwork, title, synopsis, badges and the button
+/// that carries on watching.
+struct ShowHero: View {
+    @Environment(LibraryManager.self) private var library
+    @Environment(PlaybackSession.self) private var session
+    @Environment(\.appActions) private var actions
+    let show: TVShow
+    let next: (video: Video, isResume: Bool)?
+    let hasStarted: Bool
+    let seasonCount: Int
+    let isCompact: Bool
+    @State private var showsFullOverview = false
+
+    private var height: CGFloat {
+        isCompact ? 500 : 620
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            artwork
+            if isCompact {
+                compactDetails
+            } else {
+                wideDetails
+            }
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var artwork: some View {
+        ZStack {
+            LinearGradient(colors: [Color(white: 0.24), Color(white: 0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            FilledArtwork(url: library.artworkURL(artworkKey, .large), maxPixelSize: 2_000)
+        }
+        .overlay { HeroScrim(isCompact ? .card : .wide) }
+        .heroBottomFade()
+        .frame(height: height)
+        .clipped()
+        .accessibilityHidden(true)
+    }
+
+    private var artworkKey: String? {
+        show.backdropKey ?? next?.video.stillArtworkKey ?? show.posterArtworkKey ?? show.orderedEpisodes.first?.stillArtworkKey
+    }
+
+    private var wideDetails: some View {
+        HStack(alignment: .bottom, spacing: 40) {
+            VStack(alignment: .leading, spacing: 12) {
+                HeroTitle(show.title, size: 64)
+                Text(kindLine)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                if let overview = show.overview {
+                    overviewView(overview)
+                }
+                HStack(spacing: 10) {
+                    if !infoLine.isEmpty {
+                        Text(infoLine)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.75))
                     }
-                    .padding(.top, 6)
+                    VideoBadges(file: badgeFile)
+                        .environment(\.colorScheme, .dark)
+                }
+                buttons
+                    .padding(.top, 4)
+            }
+            .frame(maxWidth: 640, alignment: .leading)
+            Spacer(minLength: 0)
+            if let starring {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Starring")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
+                    Text(starring)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: 280, alignment: .leading)
+                .padding(.bottom, 8)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 48)
+        .padding(.bottom, height * 0.12 + 28)
+    }
+
+    private var compactDetails: some View {
+        VStack(spacing: 10) {
+            HeroTitle(show.title, size: 44, alignment: .center)
+            Text(kindLine)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+            VideoBadges(file: badgeFile)
+                .environment(\.colorScheme, .dark)
+            buttons
+                .padding(.top, 4)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, Metrics.contentPadding)
+        .padding(.bottom, height * 0.12 + 12)
+    }
+
+    private func overviewView(_ overview: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(overview)
+                .font(.body)
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(3)
+            if overview.count > 200 {
+                Button("More") {
+                    showsFullOverview = true
+                }
+                .buttonStyle(.plain)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .popover(isPresented: $showsFullOverview) {
+                    OverviewPopover(title: show.title, text: overview)
                 }
             }
-            .foregroundStyle(.white)
-            .padding(Metrics.contentPadding)
-            .padding(.bottom, 8)
+        }
+        .frame(maxWidth: 580, alignment: .leading)
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 12) {
+            if let next {
+                let state = library.watchState(for: next.video)
+                Button {
+                    VideoPlayback(library: library, session: session, actions: actions).play(next.video)
+                } label: {
+                    Label(ShowPlayTitle.title(for: next, hasStarted: hasStarted), systemImage: "play.fill")
+                        .frame(minWidth: isCompact ? 170 : 0)
+                }
+                .buttonStyle(HeroPlayButtonStyle(progress: state?.progress))
+                .disabled(!next.video.isAvailable)
+                if !isCompact, let remaining = state?.remaining {
+                    Text(VideoFormat.remaining(remaining))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+            }
+            let isOnList = library.isOnWatchlist(show)
+            HeroCircleButton(isOnList ? "Remove from Watchlist" : "Add to Watchlist", systemImage: isOnList ? "checkmark" : "plus") {
+                library.toggleWatchlist(show)
+            }
         }
     }
 
-    private func buttonTitle(_ next: (video: Video, isResume: Bool)) -> String {
-        let label = next.video.episodeLabel ?? ""
-        return next.isResume ? "Resume \(label)" : "Play \(label)"
+    private var kindLine: String {
+        var parts = ["TV Show"]
+        if !show.genres.isEmpty {
+            parts.append(show.genres.prefix(3).joined(separator: ", "))
+        }
+        return parts.joined(separator: " \u{00B7} ")
     }
 
-    private func infoLine(seasonCount: Int) -> String {
+    private var infoLine: String {
         var parts: [String] = []
         if let year = show.year { parts.append(String(year)) }
-        if !show.genres.isEmpty { parts.append(show.genres.prefix(2).joined(separator: ", ")) }
-        if let rating = show.contentRating { parts.append(rating) }
         if seasonCount > 0 { parts.append(seasonCount == 1 ? "1 Season" : "\(seasonCount) Seasons") }
+        if let rating = show.contentRating { parts.append(rating) }
         if let network = show.network { parts.append(network) }
         return parts.joined(separator: " \u{00B7} ")
     }
 
-    private func seasonPicker(_ seasons: [Season], selected: Int?) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(seasons) { season in
-                    let isSelected = season.number == selected
-                    Button {
-                        withAnimation(Motion.quick) {
-                            selectedSeason = season.number
-                        }
-                    } label: {
-                        Text(season.displayTitle)
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.quaternary), in: Capsule())
-                            .foregroundStyle(isSelected ? AnyShapeStyle(.background) : AnyShapeStyle(.primary))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                }
-            }
-        }
-        .scrollClipDisabled()
+    private var starring: String? {
+        let names = show.cast.prefix(3).map(\.name)
+        return names.isEmpty ? nil : names.joined(separator: ", ")
+    }
+
+    /// The badges of the episode you'd play next (or the first).
+    private var badgeFile: MediaFile? {
+        next?.video.file ?? show.orderedEpisodes.first?.file
     }
 }
 
-/// A season's episodes: still, number, title, synopsis, progress.
-private struct SeasonEpisodes: View {
+/// The whole synopsis, from "More".
+private struct OverviewPopover: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.title3.bold())
+                Text(text)
+                    .textSelection(.enabled)
+            }
+            .padding(20)
+        }
+        .frame(idealWidth: 460, maxWidth: 520, maxHeight: 440)
+        .presentationCompactAdaptation(.sheet)
+        #if os(iOS)
+        .presentationDetents([.medium, .large])
+        #endif
+    }
+}
+
+/// On the iPhone the synopsis and cast sit under the header.
+private struct ShowSummary: View {
+    let show: TVShow
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let overview = show.overview {
+                Text(overview)
+                    .font(.callout)
+                    .lineLimit(isExpanded ? nil : 4)
+                if overview.count > 180 {
+                    Button(isExpanded ? "Less" : "More") {
+                        withAnimation(Motion.quick) {
+                            isExpanded.toggle()
+                        }
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                }
+            }
+            let names = show.cast.prefix(3).map(\.name)
+            if !names.isEmpty {
+                Text("Starring \(names.joined(separator: ", "))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Episodes
+
+/// The season menu, then the season's episodes as wide cards in a row that
+/// opens at the episode you're up to.
+struct SeasonEpisodesSection: View {
     @Environment(LibraryManager.self) private var library
-    @Environment(PlaybackSession.self) private var session
-    @Environment(\.appActions) private var actions
+    let seasons: [Season]
     let season: Season
+    @Binding var selectedSeason: Int?
+    /// The episode to continue with, highlighted and scrolled to.
+    let upNext: (video: Video, isResume: Bool)?
     let isCompact: Bool
+
+    private var cardWidth: CGFloat {
+        isCompact ? 280 : 340
+    }
 
     var body: some View {
         let episodes = season.orderedEpisodes
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(season.displayTitle)
-                    .font(.title2.bold())
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                seasonTitle
+                Text(episodes.count == 1 ? "1 Episode" : "\(episodes.count) Episodes")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Menu {
                     Button("Mark Season as Watched", systemImage: "checkmark.circle") { library.markWatched(episodes) }
@@ -195,94 +363,264 @@ private struct SeasonEpisodes: View {
                 Text(overview)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .lineLimit(3)
                     .frame(maxWidth: 760, alignment: .leading)
             }
-            LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(episodes) { episode in
-                    Button {
-                        VideoPlayback(library: library, session: session, actions: actions).play(episode)
-                    } label: {
-                        EpisodeRow(episode: episode, stillWidth: isCompact ? 150 : 240)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 18) {
+                        ForEach(episodes) { episode in
+                            EpisodeCard(episode: episode, width: cardWidth, highlight: highlight(for: episode))
+                                .id(episode.id)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!episode.isAvailable)
-                    .contextMenu {
-                        VideoMenuItems(video: episode, showsGoToShow: false)
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.viewAligned)
+                .scrollClipDisabled()
+                .task(id: ScrollTarget(season: season.number, episode: upNext?.video.id)) {
+                    guard let target = upNext?.video, episodes.contains(where: { $0.id == target.id }) else { return }
+                    // Let the row lay out first.
+                    try? await Task.sleep(for: .milliseconds(60))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.smooth(duration: 0.4)) {
+                        proxy.scrollTo(target.id, anchor: .leading)
                     }
                 }
             }
         }
     }
+
+    private struct ScrollTarget: Hashable {
+        var season: Int
+        var episode: UUID?
+    }
+
+    @ViewBuilder
+    private var seasonTitle: some View {
+        if seasons.count > 1 {
+            Menu {
+                Picker("Season", selection: Binding(get: { season.number }, set: { selectedSeason = $0 })) {
+                    ForEach(seasons) { season in
+                        Text(season.displayTitle).tag(season.number)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                HStack(spacing: 6) {
+                    Text(season.displayTitle)
+                        .font(.title2.bold())
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.primary)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(Text("Season"))
+            .accessibilityValue(Text(season.displayTitle))
+        } else {
+            Text(season.displayTitle)
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private func highlight(for episode: Video) -> String? {
+        guard let upNext, upNext.video.id == episode.id else { return nil }
+        return upNext.isResume ? "Continue" : "Up Next"
+    }
 }
 
-private struct EpisodeRow: View {
+/// A wide episode card: the still (with progress), the number, title,
+/// synopsis, a play line and a menu.
+struct EpisodeCard: View {
     @Environment(LibraryManager.self) private var library
+    @Environment(PlaybackSession.self) private var session
+    @Environment(\.appActions) private var actions
     let episode: Video
-    let stillWidth: CGFloat
+    let width: CGFloat
+    /// "Continue" or "Up Next" on the episode you're up to.
+    let highlight: String?
 
     var body: some View {
         let state = library.watchState(for: episode)
-        HStack(alignment: .top, spacing: 14) {
-            ArtworkView(url: library.artworkURL(episode.stillArtworkKey, .large), shape: .still, maxPixelSize: 640, placeholderSymbol: "tv")
-                .overlay(alignment: .bottom) {
-                    if let progress = state?.progress {
-                        StillProgressBar(progress: progress)
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if state?.isWatched == true {
-                        WatchedMark().padding(5)
-                    }
-                }
-                .frame(width: stillWidth)
-                .artworkShadow(isProminent: false)
-            VStack(alignment: .leading, spacing: 4) {
+        let playback = VideoPlayback(library: library, session: session, actions: actions)
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                playback.play(episode)
+            } label: {
+                still(state)
+            }
+            .buttonStyle(.plain)
+            .disabled(!episode.isAvailable)
+            .accessibilityLabel(Text("Play \(episode.displayTitle)"))
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(numberLine)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                 Text(episode.displayTitle)
                     .font(.headline)
-                    .lineLimit(2)
-                if let overview = episode.overview {
-                    Text(overview)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                    .lineLimit(1)
+                Text(episode.overview ?? "")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3, reservesSpace: true)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    playback.play(episode)
+                } label: {
+                    Label(playLine(state), systemImage: "play.fill")
+                        .font(.subheadline.weight(.semibold))
                 }
-                if let detail = detailLine(state) {
-                    Text(detail)
-                        .font(.caption)
+                .buttonStyle(.plain)
+                .disabled(!episode.isAvailable)
+                if state?.isWatched == true {
+                    Label("Watched", systemImage: "checkmark")
+                        .labelStyle(.iconOnly)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Menu {
+                    VideoMenuItems(video: episode, showsGoToShow: false)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 32, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel(Text("More for \(episode.displayTitle)"))
+            }
+            .foregroundStyle(.primary)
+        }
+        .frame(width: width, alignment: .leading)
+        .opacity(episode.isAvailable ? 1 : 0.5)
+        .contextMenu {
+            VideoMenuItems(video: episode, showsGoToShow: false)
+        }
+    }
+
+    private func still(_ state: WatchState?) -> some View {
+        ArtworkView(url: library.artworkURL(episode.stillArtworkKey, .large), shape: .still, maxPixelSize: 720, placeholderSymbol: "tv")
+            .overlay(alignment: .bottom) {
+                if let progress = state?.progress {
+                    StillProgressBar(progress: progress)
                 }
             }
-            Spacer(minLength: 0)
-        }
-        .contentShape(Rectangle())
-        .opacity(episode.isAvailable ? 1 : 0.5)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(state?.isWatched == true ? "Watched" : ""))
+            .overlay(alignment: .topTrailing) {
+                if state?.isWatched == true {
+                    WatchedMark().padding(6)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let highlight {
+                    Text(highlight)
+                        .font(.caption2.weight(.bold))
+                        .textCase(.uppercase)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
+                        .padding(8)
+                }
+            }
+            .overlay {
+                if highlight != nil {
+                    RoundedRectangle(cornerRadius: ArtworkShape.still.cornerRadius, style: .continuous)
+                        .strokeBorder(Color.accentColor, lineWidth: 3)
+                }
+            }
+            .artworkShadow(isProminent: false)
     }
 
     private var numberLine: String {
         guard let number = episode.episodeNumber else { return "Episode" }
+        if episode.seasonNumber == 0 {
+            return "Special \(number)"
+        }
         if let last = episode.lastEpisodeNumber, last > number {
             return "Episodes \(number)\u{2013}\(last)"
         }
         return "Episode \(number)"
     }
 
-    private func detailLine(_ state: WatchState?) -> String? {
-        var parts: [String] = []
+    private func playLine(_ state: WatchState?) -> String {
         if let remaining = state?.remaining {
-            parts.append(VideoFormat.remaining(remaining))
-        } else if let runtime = VideoFormat.runtime(episode.duration) {
-            parts.append(runtime)
+            return VideoFormat.remaining(remaining)
         }
-        if let aired = episode.releaseDate {
-            parts.append(aired)
+        return VideoFormat.runtime(episode.duration) ?? "Play"
+    }
+}
+
+// MARK: - About
+
+/// The full synopsis and the show's details.
+private struct ShowAboutSection: View {
+    let show: TVShow
+    let seasonCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("About")
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+            if let overview = show.overview {
+                Text(overview)
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 8) {
+                ForEach(rows, id: \.0) { row in
+                    GridRow {
+                        Text(row.0)
+                            .foregroundStyle(.secondary)
+                            .gridColumnAlignment(.trailing)
+                        Text(row.1)
+                            .textSelection(.enabled)
+                    }
+                    .font(.callout)
+                }
+            }
+            if let credit = MetadataCredit.forShow(show) {
+                MetadataCreditView(credit: credit)
+            }
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
+    private var rows: [(String, String)] {
+        var rows: [(String, String)] = []
+        if !show.genres.isEmpty {
+            rows.append(("Genre", show.genres.joined(separator: ", ")))
+        }
+        if let year = show.year {
+            rows.append(("First Aired", String(year)))
+        }
+        if let network = show.network {
+            rows.append(("Network", network))
+        }
+        if seasonCount > 0 {
+            rows.append(("Seasons", String(seasonCount)))
+        }
+        rows.append(("Episodes", String(show.episodes.count)))
+        if let rating = show.contentRating {
+            rows.append(("Rated", rating))
+        }
+        if let score = show.rating {
+            rows.append(("Rating", String(format: "%.1f / 10", score)))
+        }
+        return rows
     }
 }

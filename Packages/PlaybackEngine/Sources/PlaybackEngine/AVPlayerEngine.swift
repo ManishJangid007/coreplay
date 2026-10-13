@@ -43,10 +43,13 @@ final class AVPlayerEngine: PlaybackEngine {
     let player = AVPlayer()
     /// The layer showing the video; Picture in Picture is built on it.
     private(set) var playerLayer: AVPlayerLayer?
-    private var playerItem: AVPlayerItem?
-    private var asset: AVURLAsset?
+    private(set) var playerItem: AVPlayerItem?
+    private(set) var asset: AVURLAsset?
     private var audibleGroup: AVMediaSelectionGroup?
     private var legibleGroup: AVMediaSelectionGroup?
+    /// Audio tracks of files without an audible selection group (FLAC, AIFF,
+    /// WAV and most single-track files), listed straight from the asset.
+    private var plainAudioTracks: [PlainAudioTrack] = []
     private var playerObservations: [NSKeyValueObservation] = []
     private var itemObservations: [NSKeyValueObservation] = []
     private var itemNotificationTokens: [any NSObjectProtocol] = []
@@ -56,6 +59,10 @@ final class AVPlayerEngine: PlaybackEngine {
     private var wantsToPlay = false
     private var pendingStartPosition: TimeInterval?
     private var requestedRate: Float = 1
+    /// The item is a preview clip (see `PlaybackItem.isPreview`).
+    private var isPreviewItem = false
+    /// The item asked for no sound (`PlaybackItem.playsAudio`).
+    private var isSilentItem = false
 
     init() {
         let (stream, continuation) = AsyncStream.makeStream(of: PlaybackEvent.self)
@@ -99,7 +106,7 @@ final class AVPlayerEngine: PlaybackEngine {
 
     var isMuted: Bool {
         get { player.isMuted }
-        set { player.isMuted = newValue }
+        set { player.isMuted = newValue || isSilentItem }
     }
 
     func load(_ item: PlaybackItem) async throws {
@@ -112,6 +119,18 @@ final class AVPlayerEngine: PlaybackEngine {
 
         self.asset = asset
         self.playerItem = playerItem
+        isPreviewItem = item.isPreview
+        isSilentItem = !item.playsAudio
+        // A preview stays on this screen and lets it sleep; the main player
+        // goes to AirPlay and keeps the display awake.
+        player.allowsExternalPlayback = !item.isPreview
+        #if os(iOS)
+        player.usesExternalPlaybackWhileExternalScreenIsActive = !item.isPreview
+        #endif
+        player.preventsDisplaySleepDuringVideoPlayback = !item.isPreview
+        if isSilentItem {
+            player.isMuted = true
+        }
         isReady = false
         wantsToPlay = false
         pendingStartPosition = (item.startPosition ?? 0) > 0 ? item.startPosition : nil
@@ -161,9 +180,16 @@ final class AVPlayerEngine: PlaybackEngine {
     // MARK: - Tracks
 
     func selectAudioTrack(id: MediaTrack.ID) {
-        guard let group = audibleGroup, let playerItem,
-              let option = Self.option(withID: id, in: group, kind: .audio) else { return }
-        playerItem.select(option, in: group)
+        guard let playerItem else { return }
+        if let group = audibleGroup {
+            guard let option = Self.option(withID: id, in: group, kind: .audio) else { return }
+            playerItem.select(option, in: group)
+        } else if let chosen = plainAudioTracks.first(where: { $0.id == id }) {
+            // No selection group: switch the item's own audio tracks on and off.
+            for track in playerItem.tracks where track.assetTrack?.mediaType == .audio {
+                track.isEnabled = track.assetTrack?.trackID == chosen.trackID
+            }
+        }
         refreshTracks()
     }
 
@@ -364,6 +390,7 @@ final class AVPlayerEngine: PlaybackEngine {
         itemNotificationTokens.removeAll()
         audibleGroup = nil
         legibleGroup = nil
+        plainAudioTracks = []
         playerItem = nil
         asset = nil
     }
@@ -454,6 +481,11 @@ final class AVPlayerEngine: PlaybackEngine {
         guard self.asset === asset, !Task.isCancelled else { return }
         audibleGroup = groups.audible
         legibleGroup = groups.legible
+        plainAudioTracks = groups.audible == nil ? groups.plainAudio : []
+        if isPreviewItem, let legible = groups.legible, let playerItem {
+            // Previews never show subtitles.
+            playerItem.select(nil, in: legible)
+        }
         refreshTracks()
 
         let details = await Self.loadAssetDetails(asset)
@@ -476,12 +508,38 @@ final class AVPlayerEngine: PlaybackEngine {
     private struct SelectionGroups: @unchecked Sendable {
         let audible: AVMediaSelectionGroup?
         let legible: AVMediaSelectionGroup?
+        var plainAudio: [PlainAudioTrack] = []
+    }
+
+    /// An audio track listed from the asset itself, for files whose audio
+    /// isn't offered as a media selection group.
+    struct PlainAudioTrack: Hashable, Sendable {
+        let trackID: CMPersistentTrackID
+        let languageCode: String?
+        let channelCount: Int?
+
+        var id: MediaTrack.ID { "audio-track-\(trackID)" }
     }
 
     private nonisolated static func loadSelectionGroups(_ asset: AVURLAsset) async -> SelectionGroups {
         let audible = try? await asset.loadMediaSelectionGroup(for: .audible)
         let legible = try? await asset.loadMediaSelectionGroup(for: .legible)
-        return SelectionGroups(audible: audible ?? nil, legible: legible ?? nil)
+        var groups = SelectionGroups(audible: audible ?? nil, legible: legible ?? nil)
+        if groups.audible == nil, let tracks = try? await asset.loadTracks(withMediaType: .audio) {
+            for track in tracks {
+                let loaded = try? await track.load(.languageCode, .extendedLanguageTag, .formatDescriptions)
+                var channels: Int?
+                if let description = loaded?.2.first,
+                   let format = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
+                   format.mChannelsPerFrame > 0 {
+                    channels = Int(format.mChannelsPerFrame)
+                }
+                // "und" is how files say they don't know.
+                let language = (loaded?.1 ?? loaded?.0).flatMap { $0 == "und" ? nil : $0 }
+                groups.plainAudio.append(PlainAudioTrack(trackID: track.trackID, languageCode: language, channelCount: channels))
+            }
+        }
+        return groups
     }
 
     private struct AssetDetails: Sendable {
@@ -543,6 +601,19 @@ final class AVPlayerEngine: PlaybackEngine {
         if let group = audibleGroup {
             let selected = selection.selectedMediaOption(in: group)
             audio = Self.tracks(in: group, kind: .audio, selected: selected)
+        } else if !plainAudioTracks.isEmpty {
+            let enabled = Set(playerItem.tracks.filter(\.isEnabled).compactMap { $0.assetTrack?.trackID })
+            audio = plainAudioTracks.enumerated().map { index, track in
+                MediaTrack(
+                    id: track.id,
+                    kind: .audio,
+                    name: plainAudioTracks.count > 1 ? "Track \(index + 1)" : "",
+                    languageCode: track.languageCode,
+                    // Before the item lists its tracks, the first one is the one playing.
+                    isSelected: enabled.isEmpty ? index == 0 : enabled.contains(track.trackID),
+                    channelCount: track.channelCount
+                )
+            }
         }
         var subtitles: [MediaTrack] = []
         if let group = legibleGroup {
@@ -556,8 +627,17 @@ final class AVPlayerEngine: PlaybackEngine {
     }
 
     private static func tracks(in group: AVMediaSelectionGroup, kind: MediaTrack.Kind, selected: AVMediaSelectionOption?) -> [MediaTrack] {
-        group.options.enumerated().map { index, option in
-            MediaTrack(
+        // AVFoundation adds a forced-only twin for each subtitle track that may
+        // carry forced lines, and picks it by itself when the audio matches
+        // the viewer's language (what Apple's player calls "Auto"). Only a
+        // forced track without a full one in its language gets a menu entry.
+        let fullLanguages = Set(group.options.filter { !$0.hasMediaCharacteristic(.containsOnlyForcedSubtitles) }.map { languageKey(of: $0) })
+        return group.options.enumerated().compactMap { index, option in
+            if kind == .subtitle, option.hasMediaCharacteristic(.containsOnlyForcedSubtitles),
+               fullLanguages.contains(languageKey(of: option)) {
+                return nil
+            }
+            return MediaTrack(
                 id: "\(kind.rawValue)-\(index)",
                 kind: kind,
                 name: option.displayName,
@@ -568,6 +648,10 @@ final class AVPlayerEngine: PlaybackEngine {
                     || option.hasMediaCharacteristic(.transcribesSpokenDialogForAccessibility)
             )
         }
+    }
+
+    private static func languageKey(of option: AVMediaSelectionOption) -> String {
+        (option.extendedLanguageTag ?? option.locale?.identifier ?? "").lowercased()
     }
 
     private static func option(withID id: MediaTrack.ID, in group: AVMediaSelectionGroup, kind: MediaTrack.Kind) -> AVMediaSelectionOption? {

@@ -61,6 +61,48 @@ public struct WatchNowRows: View {
     }
 }
 
+/// Home's Watchlist row: movies and shows added with "+".
+public struct WatchlistRow: View {
+    @Environment(LibraryManager.self) private var library
+
+    public init() {}
+
+    public var body: some View {
+        // Reading `watchlist` keeps the row in step with the "+" buttons.
+        let entries = library.watchlist.isEmpty ? [] : library.watchlistEntries()
+        if !entries.isEmpty {
+            Shelf("Watchlist") {
+                ForEach(entries) { entry in
+                    switch entry {
+                    case .movie(let movie):
+                        NavigationLink(value: movie) {
+                            MoviePosterCell(video: movie)
+                                .frame(width: 150)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Remove from Watchlist", systemImage: "minus.circle") { library.toggleWatchlist(movie) }
+                            Divider()
+                            VideoMenuItems(video: movie)
+                        }
+                    case .show(let show):
+                        NavigationLink(value: show) {
+                            ShowPosterCell(show: show)
+                                .frame(width: 150)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Remove from Watchlist", systemImage: "minus.circle") { library.toggleWatchlist(show) }
+                            Divider()
+                            ShowMenuItems(show: show)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Home's Recently Added Movies and TV Shows rows.
 public struct RecentlyAddedVideoRows: View {
     @Query(RecentlyAddedVideoRows.movies) private var movies: [Video]

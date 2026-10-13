@@ -1,0 +1,9 @@
+[playlist]
+File1=tone.opus
+Title1=Opus
+Length1=3
+File2=tone.wma
+Title2=WMA
+Length2=3
+NumberOfEntries=2
+Version=2

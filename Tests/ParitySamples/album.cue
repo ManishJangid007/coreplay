@@ -1,0 +1,12 @@
+PERFORMER "Parity"
+TITLE "Cue Sheet"
+FILE "album.flac" WAVE
+  TRACK 01 AUDIO
+    TITLE "First"
+    INDEX 01 00:00:00
+  TRACK 02 AUDIO
+    TITLE "Second"
+    INDEX 01 00:03:00
+  TRACK 03 AUDIO
+    TITLE "Third"
+    INDEX 01 00:06:00

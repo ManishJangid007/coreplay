@@ -40,6 +40,18 @@ let package = Package(
                 "MusicFeature",
                 "NowPlaying",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
+                .product(name: "PlaybackEngine", package: "PlaybackEngine"),
+            ]
+        ),
+        .testTarget(
+            name: "VideoFeatureTests",
+            dependencies: [
+                "VideoFeature",
+                "DesignSystem",
+                "MediaLibrary",
+                "NowPlaying",
+                .product(name: "PlaybackCore", package: "PlaybackEngine"),
+                .product(name: "PlaybackEngine", package: "PlaybackEngine"),
             ]
         ),
         .target(

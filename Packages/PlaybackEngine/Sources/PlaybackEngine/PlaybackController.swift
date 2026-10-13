@@ -28,6 +28,16 @@ public final class PlaybackController {
         case endOfMedia
     }
 
+    /// What a controller is for. The app's player is `.main`; the hero
+    /// carousel's clips play in a `.preview` controller, which never offers
+    /// Picture in Picture or AirPlay and makes no scrubber previews.
+    public enum Purpose: Sendable {
+        case main
+        case preview
+    }
+
+    public let purpose: Purpose
+
     // MARK: Observable state
 
     public private(set) var currentItem: PlaybackItem?
@@ -144,14 +154,17 @@ public final class PlaybackController {
         }
     }
 
-    public init(configuration: EngineConfiguration = EngineConfiguration()) {
+    public init(configuration: EngineConfiguration = EngineConfiguration(), purpose: Purpose = .main) {
+        self.purpose = purpose
         self.configuration = configuration
         self.router = EngineRouter(alwaysUseVLC: configuration.alwaysUseVLC)
         self.factory = EngineFactory(configuration: configuration)
         let host = VideoHostView(frame: .zero)
         self.videoHost = host
         self.videoView = host
-        connectPictureInPicture()
+        if purpose == .main {
+            connectPictureInPicture()
+        }
     }
 
     // MARK: - Loading
@@ -160,6 +173,10 @@ public final class PlaybackController {
     public func load(_ item: PlaybackItem, autoplay: Bool = true) async {
         generation += 1
         let loadGeneration = generation
+        var item = item
+        if purpose == .preview {
+            item.isPreview = true
+        }
 
         // Keep the previous item's file access until its engine has stopped
         // reading it (that happens before this method returns).
@@ -249,7 +266,7 @@ public final class PlaybackController {
         activeEngine = newEngine.kind
         capabilities = newEngine.capabilities
         newEngine.attachVideoOutput(to: videoView)
-        if let avEngine = newEngine as? AVPlayerEngine, let layer = avEngine.playerLayer {
+        if purpose == .main, let avEngine = newEngine as? AVPlayerEngine, let layer = avEngine.playerLayer {
             pictureInPicture.use(playerLayer: layer)
         } else {
             // VLC offers Picture in Picture once its video output is ready.
@@ -567,6 +584,20 @@ public final class PlaybackController {
         if available.contains(.subtitleStyling) { engine.subtitleScale = subtitleSize.scale }
     }
 
+    // MARK: - Media info
+
+    /// What's inside the current item, stream by stream.
+    public func mediaInfo() async -> MediaInfo? {
+        guard let engine else { return nil }
+        return await engine.mediaInfo()
+    }
+
+    /// Live figures from the engine (bitrate, dropped pictures). Not
+    /// observable: read it on a timer.
+    public var statistics: PlaybackStatistics? {
+        engine?.statistics
+    }
+
     // MARK: - Picture in Picture and previews
 
     /// VLC's Picture in Picture reports in through the video view; its
@@ -600,7 +631,7 @@ public final class PlaybackController {
     }
 
     private func prepareScrubPreviews() {
-        guard state == .playing, let item = currentItem else { return }
+        guard purpose == .main, state == .playing, let item = currentItem else { return }
         scrubPreviews.prepare(for: item, duration: duration, hasVideo: hasVideo)
     }
 

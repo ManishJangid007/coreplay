@@ -26,6 +26,11 @@ public struct VideoPlayerView: View {
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var pinchScale: CGFloat = 1
+    /// The item whose Up Next card was dismissed ("Watch Credits").
+    @State private var dismissedUpNextFor: UUID?
+    /// The item the Up Next card already moved on from.
+    @State private var advancedFrom: UUID?
+    @AppStorage(PlaybackPreferences.autoplaysNextEpisodeKey) private var autoplaysNextEpisode = true
     @FocusState private var hasKeyboardFocus: Bool
 
     private let onClose: () -> Void
@@ -58,6 +63,14 @@ public struct VideoPlayerView: View {
             if controlsVisible, !showsOptions {
                 controlsOverlay
                     .transition(.opacity)
+            }
+
+            if !showsOptions, let offer = upNextOffer {
+                UpNextCard(item: offer.item, countdown: offer.countdown, onPlay: playNextNow, onDismiss: dismissUpNext)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, controlsVisible ? 150 : 28)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
             if showsOptions {
@@ -131,6 +144,13 @@ public struct VideoPlayerView: View {
                 close()
             }
         }
+        // The countdown at the end credits ran out: on to the next episode.
+        .onChange(of: upNextPhase == .startNext) { _, shouldStart in
+            if shouldStart {
+                playNextNow()
+            }
+        }
+        .animation(Motion.respecting(reduceMotion, Motion.standard), value: upNextOffer != nil)
         .animation(Motion.respecting(reduceMotion, Motion.standard), value: showsOptions)
         .animation(Motion.respecting(reduceMotion, Motion.quick), value: toast)
         #if os(iOS)
@@ -359,6 +379,49 @@ public struct VideoPlayerView: View {
         }
         .overVideoShadow()
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Up Next
+
+    private struct UpNextOffer {
+        let item: PlaybackItem
+        let countdown: UpNextPolicy.Countdown?
+    }
+
+    /// Where the player is in the end-credits countdown (see `UpNextPolicy`).
+    private var upNextPhase: UpNextPolicy.Phase {
+        guard controller.hasVideo, !controller.isScrubbing, controller.state.error == nil,
+              let current = controller.currentItem, dismissedUpNextFor != current.id, advancedFrom != current.id,
+              let next = session.upNext.first, next.kind == .video else { return .hidden }
+        let credits = UpNextPolicy.creditsStart(chapters: controller.chapters, duration: controller.duration)
+        return UpNextPolicy.phase(
+            currentTime: controller.currentTime,
+            duration: controller.duration,
+            creditsStart: credits,
+            autoplays: autoplaysNextEpisode
+        )
+    }
+
+    private var upNextOffer: UpNextOffer? {
+        guard let next = session.upNext.first else { return nil }
+        switch upNextPhase {
+        case .hidden:
+            return nil
+        case .offering(let countdown):
+            return UpNextOffer(item: next, countdown: countdown)
+        case .startNext:
+            return UpNextOffer(item: next, countdown: UpNextPolicy.Countdown(remaining: 0, total: UpNextPolicy.countdown))
+        }
+    }
+
+    private func playNextNow() {
+        guard let current = controller.currentItem, advancedFrom != current.id else { return }
+        advancedFrom = current.id
+        Task { await session.next() }
+    }
+
+    private func dismissUpNext() {
+        dismissedUpNextFor = controller.currentItem?.id
     }
 
     // MARK: - Options panel

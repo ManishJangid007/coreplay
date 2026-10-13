@@ -7,7 +7,7 @@
 | 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Done (checked on the Mac) |
 | 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Done (checked on the Mac) |
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
-| 6 | VLC parity: feature checklist against the sample suite | Next |
+| 6 | VLC parity: feature checklist against the sample suite | In progress: parity suite and Media Info done |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
@@ -26,6 +26,111 @@ These come on top of the plan; nothing in the plan was dropped for them.
 | Movie and show artwork found from the name, with a free source | Milestone 5 | Done: TVmaze for TV shows and Wikipedia for movies, with no key |
 | Native-looking player controls instead of boxy ones, with room around the icons (the subtitle button was squeezed) | Milestone 5 | Done for the video player, Now Playing and the Mac playback bar |
 | One app that feels the same everywhere, with a very large library | Every milestone; measured in Milestone 9 | Ongoing |
+| A hero carousel like the TV app and Netflix: full artwork for movies and shows, and a short clip playing for movies | Added during Milestone 6 | Done: Home, Movies and TV Shows (see below) |
+| A series page with the episodes, the one last played, and a seamless way to carry on | Added during Milestone 6 | Done: show page redesign and Up Next at the end credits (see below) |
+
+---
+
+## Hero carousel and series page — October 13, 2026
+
+Built during Milestone 6, at your request (with the TV app's Home and show
+page as the reference).
+
+### What was built
+
+**The hero carousel** (Home, then Movies and TV Shows)
+- **Full artwork:**
+  - on the iPad and the Mac it runs edge to edge under the toolbar;
+  - on the iPhone it's a tall card under the large title.
+  The bottom fades into the page, so it ends softly in light and dark appearance.
+- **Each page shows:**
+  - a "New" or "New Episodes" badge;
+  - the title, set large and compressed (in place of a film's title art);
+  - "Movie · Drama, Mystery · 2024 · 2 hr 4 min" or "TV Show · Comedy · 2 Seasons";
+  - a three-line synopsis;
+  - the white Play capsule ("Play", "Resume", "Resume S1, E5", "Play First Episode"), with a progress line when started;
+  - "+" for the watchlist.
+- **Moving between pages:**
+  - page dots;
+  - arrows that appear on hover on the Mac and stay visible on the iPad;
+  - swiping.
+  It moves on by itself every nine seconds, but not while the pointer is over it, while it's off screen or while the app is in the background. With Reduce Motion on, it doesn't move on by itself.
+- **What it features** (`FeaturedPicker`, tested):
+  1. up to three titles added in the last two weeks;
+  2. up to two titles you're in the middle of;
+  3. then a pick of unwatched titles that changes once a day.
+  Real backdrops come before frames, and titles with no picture are used only when there's nothing else.
+- **Movie clips:**
+  - 1.6 seconds after a movie's page settles, 30 seconds of the movie itself play behind the title. They start about a sixth of the way in, past the opening credits and before any spoilers.
+  - The clip fades in over the artwork once frames arrive, and back out at the end.
+  - It's silent, with a mute button to turn the sound on.
+  - It uses the same engines as the player, so MKV and AVI clips play too.
+- **When clips don't play:**
+  - while something else is playing;
+  - in Low Power Mode;
+  - with iOS's Auto-Play Video Previews turned off;
+  - with Settings ▸ Playback ▸ Play Previews turned off.
+  A silent clip never interrupts music from another app: it opens no audio output, and on iOS uses the ambient audio category.
+- **The watchlist:** "+" adds a movie or show; a Watchlist row on Home lists them. Movie and show menus have Add to and Remove from Watchlist too.
+
+**The series page**
+- **Header:**
+  - the backdrop, the title, "TV Show · Comedy, Drama";
+  - the synopsis with **More**;
+  - year, seasons, rating and network;
+  - 4K/HDR/Atmos/5.1/CC badges from the episode you'd play next;
+  - **Starring** on the right.
+- **One button carries on:** "Resume S1, E5" (with its progress and time left), "Play S1, E6" after a finished episode, or "Play First Episode".
+- **A season menu** ("Season 1 ⌃⌄") over a row of wide episode cards. Each card has:
+  - the still, with a progress bar and a watched check;
+  - EPISODE 5, the title and a three-line synopsis;
+  - "▶ 45 min" or "▶ 23 min left";
+  - a ••• menu (Resume, Play from Beginning, watched, Edit Info…).
+- **The episode you're up to** is outlined and tagged CONTINUE or UP NEXT. The row opens scrolled to it, in its season.
+- **Below:** the cast, and an About section with the full synopsis and details.
+
+**Carrying on to the next episode** (in the player)
+- **When the card appears:** where the end credits start (a chapter named like "End Credits", "Credits" or "Outro"), or 20 seconds before the end when there's no such chapter.
+- **The card** shows the next episode's still, a countdown ring, its title, **Play Now** and **Watch Credits**.
+- **The countdown:**
+  - at a credits chapter, the next episode starts after ten seconds;
+  - without one, it counts down to the end, so nothing of the story is cut off.
+- **Settings ▸ Playback ▸ Play Next Episode Automatically** (on by default). Turned off, the player stops on the last frame and the card waits for you.
+- **Watched:** an episode left at its end credits counts as watched, even when the credits start before 92%. This keeps it out of Continue Watching.
+
+**Also fixed** (from the Milestone 6 parity run)
+- **FLAC and AIFF files** played with AVFoundation listed no audio track (they have no selection group). Their tracks are now read from the file.
+- **MP4 subtitles** listed twice ("English" and "English (Forced)"). AVFoundation adds a forced-only twin of each subtitle track and picks it by itself, so the twin is no longer listed.
+
+### How it was checked
+
+- **Mac and iOS Simulator builds:** pass.
+- **The full test run:** passes, including the parity suite, which now passes for every sample.
+- **New tests:**
+  - `UpNextPolicy`: credits chapters, countdowns, autoplay off, short clips;
+  - `FeaturedPicker`: order, limits, daily rotation;
+  - watched-at-the-credits rules;
+  - what the carousel features from a made-up library (badges, button titles, lines);
+  - the watchlist;
+  - clip start points.
+- **Snapshots in `build/snapshots`,** checked by eye:
+  - `hero-wide-movie`, `hero-wide-show`, light and dark;
+  - `hero-card` (iPhone);
+  - `show-page`, light, dark and compact;
+  - `up-next-card`.
+
+### Stubbed or deferred
+
+- **Title art:** the hero sets the title in type. TMDB's logo images could replace it later, but that needs a library schema change.
+- **Clips** come from the file itself, about a sixth of the way in. There are no trailers.
+- **Still to check by hand on the Mac and an iPhone:**
+  - the carousel's paging, the clip fading in, and mute;
+  - Up Next at a real episode's credits.
+  Snapshots can't show scrolling, video or Liquid Glass.
+
+### Where this deviates, and why
+
+- **"+" adds to Coreplay's own watchlist.** It has no TV app account behind it, so the list stays on this device for now. The plan's iCloud sync (Milestone 8) can carry it.
 
 ---
 

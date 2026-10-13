@@ -10,12 +10,16 @@ import VideoFeature
 
 /// Home: Apple TV's "Watch Now" plus Apple Music's "Listen Now".
 ///
-/// What's playing, Continue Watching and Up Next, then Recently Played music
-/// and what was added recently.
+/// The hero carousel of movies and shows, what's playing, Continue Watching,
+/// Up Next and the watchlist, then Recently Played music and what was added
+/// recently.
 public struct HomeView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(LibraryManager.self) private var library
     @Environment(\.appActions) private var actions
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @Query(HomeView.recentlyAdded) private var recentlyAdded: [Album]
     @Query(HomeView.anyVideo) private var anyVideo: [Video]
     @State private var recentlyPlayed: [Album] = []
@@ -34,31 +38,50 @@ public struct HomeView: View {
 
     public init() {}
 
+    private var heroStyle: HeroCarousel.Style {
+        #if os(iOS)
+        HeroCarousel.Style.forWidth(isCompact: sizeClass == .compact)
+        #else
+        .fullBleed
+        #endif
+    }
+
+    private var showsHero: Bool {
+        !anyVideo.isEmpty
+    }
+
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 30) {
-                if let item = session.currentItem {
-                    NowPlayingCard(item: item, controller: session.controller) {
-                        actions.showPlayer()
-                    }
-                    .frame(maxWidth: 900, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                if showsHero {
+                    HeroCarousel(content: .everything, style: heroStyle)
                 }
-                WatchNowRows()
-                if !recentlyPlayed.isEmpty {
-                    AlbumShelf(title: "Recently Played", albums: recentlyPlayed)
-                }
-                RecentlyAddedVideoRows()
-                if !recentlyAdded.isEmpty {
-                    AlbumShelf(title: "Recently Added Music", albums: recentlyAdded)
-                }
-                if recentlyAdded.isEmpty, anyVideo.isEmpty {
-                    welcome
+                VStack(alignment: .leading, spacing: 30) {
+                    if let item = session.currentItem {
+                        NowPlayingCard(item: item, controller: session.controller) {
+                            actions.showPlayer()
+                        }
                         .frame(maxWidth: 900, alignment: .leading)
+                    }
+                    WatchNowRows()
+                    WatchlistRow()
+                    if !recentlyPlayed.isEmpty {
+                        AlbumShelf(title: "Recently Played", albums: recentlyPlayed)
+                    }
+                    RecentlyAddedVideoRows()
+                    if !recentlyAdded.isEmpty {
+                        AlbumShelf(title: "Recently Added Music", albums: recentlyAdded)
+                    }
+                    if recentlyAdded.isEmpty, anyVideo.isEmpty {
+                        welcome
+                            .frame(maxWidth: 900, alignment: .leading)
+                    }
                 }
+                .padding(Metrics.contentPadding)
             }
-            .padding(Metrics.contentPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .heroPageChrome(showsHero && heroStyle == .fullBleed)
         .navigationTitle("Home")
         .task(id: library.revision) {
             recentlyPlayed = library.recentlyPlayedAlbums()

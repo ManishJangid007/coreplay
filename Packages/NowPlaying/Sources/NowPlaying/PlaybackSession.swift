@@ -251,6 +251,16 @@ public final class PlaybackSession {
         return try? JSONDecoder().decode(Value.self, from: data)
     }
 
+    // MARK: - Previews
+
+    /// Call before a hero carousel clip starts. On iOS it keeps the clip from
+    /// interrupting audio from other apps (see `AudioSessionController`).
+    public func preparePreviewAudio() {
+        #if os(iOS)
+        audioSession.prepareForPreview()
+        #endif
+    }
+
     // MARK: - Engine configuration
 
     public func updateConfiguration(_ configuration: EngineConfiguration) {
@@ -294,6 +304,13 @@ public final class PlaybackSession {
     }
 
     private func advanceAfterEnd() async {
+        if controller.hasVideo, queue.hasNext, !PlaybackPreferences.autoplaysNextEpisode {
+            // Autoplay is off: stay on the last frame, where the player
+            // offers the next episode.
+            wantsPlayback = false
+            publishPlayback()
+            return
+        }
         if let item = queue.advance(automatic: true) {
             await load(item)
         } else {

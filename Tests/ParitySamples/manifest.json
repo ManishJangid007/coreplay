@@ -1,0 +1,815 @@
+{
+  "generatedBy": "Tools/make_parity_samples.py",
+  "samples": [
+    {
+      "file": "h264-aac.mp4",
+      "engine": "avFoundation",
+      "covers": [
+        "Formats: H.264 and AAC in MP4"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "language": "eng",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "hevc-aac.mp4",
+      "engine": "avFoundation",
+      "covers": [
+        "Formats: HEVC in MP4"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "hevc",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "hevc10-hdr10.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Formats: HEVC 10-bit, HDR10",
+        "Audio: AC-3"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "hevc",
+          "width": 320,
+          "height": 180,
+          "transfer": "smpte2084",
+          "pixelFormat": "yuv420p10le"
+        },
+        {
+          "kind": "audio",
+          "codec": "ac3",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "hevc10-hlg.mp4",
+      "engine": "avFoundation",
+      "covers": [
+        "Formats: HEVC 10-bit, HLG"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "hevc",
+          "width": 320,
+          "height": 180,
+          "transfer": "arib-std-b67",
+          "pixelFormat": "yuv420p10le"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "vp9-opus.webm",
+      "engine": "vlc",
+      "covers": [
+        "Formats: VP9 and Opus in WebM"
+      ],
+      "duration": 3.01,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "vp9",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "opus",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "av1-opus.webm",
+      "engine": "vlc",
+      "covers": [
+        "Formats: AV1"
+      ],
+      "duration": 3.01,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "av1",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "opus",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "vp8-vorbis.webm",
+      "engine": "vlc",
+      "covers": [
+        "Formats: VP8 and Vorbis"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "vp8",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "vorbis",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "xvid-mp3.avi",
+      "engine": "vlc",
+      "covers": [
+        "Formats: MPEG-4 Part 2 (Xvid) and MP3 in AVI"
+      ],
+      "duration": 3.04,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "mpeg4",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "mp3",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "mpeg2-ac3.ts",
+      "engine": "vlc",
+      "covers": [
+        "Formats: MPEG-2 and AC-3 in MPEG-TS"
+      ],
+      "duration": 3.01,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "mpeg2video",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "ac3",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "mpeg2-mp2.mpg",
+      "engine": "vlc",
+      "covers": [
+        "Formats: MPEG-2 and MP2 in MPEG-PS"
+      ],
+      "duration": 2.97,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "mpeg2video",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "mp2",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "theora-vorbis.ogv",
+      "engine": "vlc",
+      "covers": [
+        "Formats: Theora in Ogg"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "theora",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "vorbis",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "wmv2-wma.wmv",
+      "engine": "vlc",
+      "covers": [
+        "Formats: WMV and WMA in ASF"
+      ],
+      "duration": 3.09,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "wmv2",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "wmav2",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "h264-aac.flv",
+      "engine": "vlc",
+      "covers": [
+        "Formats: FLV"
+      ],
+      "duration": 3.08,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "prores-pcm.mov",
+      "engine": "avFoundation",
+      "covers": [
+        "Formats: ProRes and PCM in QuickTime"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "prores",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv422p10le"
+        },
+        {
+          "kind": "audio",
+          "codec": "pcm_s16le",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "mpeg4-aac.3gp",
+      "engine": "avFoundation",
+      "covers": [
+        "Formats: 3GP"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "mpeg4",
+          "width": 176,
+          "height": 144,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 22050
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "h264-dts.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Audio: DTS"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "dts",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "h264-truehd.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Audio: Dolby TrueHD"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "truehd",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "h264-flac.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Audio: FLAC in Matroska"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "flac",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "two-audio-tracks.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Audio tracks: two languages, named tracks",
+        "Audio: E-AC-3"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "ac3",
+          "language": "eng",
+          "title": "Main",
+          "channels": 1,
+          "sampleRate": 48000
+        },
+        {
+          "kind": "audio",
+          "codec": "eac3",
+          "language": "fre",
+          "title": "Commentary",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "subtitles.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Subtitles: ASS with styling, SRT and WebVTT inside Matroska"
+      ],
+      "duration": 3.02,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        },
+        {
+          "kind": "subtitle",
+          "codec": "ass",
+          "language": "eng",
+          "title": "Styled"
+        },
+        {
+          "kind": "subtitle",
+          "codec": "subrip",
+          "language": "eng"
+        },
+        {
+          "kind": "subtitle",
+          "codec": "webvtt",
+          "language": "fre"
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "mov-text.mp4",
+      "engine": "avFoundation",
+      "covers": [
+        "Subtitles: 3GPP timed text in MP4"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        },
+        {
+          "kind": "subtitle",
+          "codec": "mov_text",
+          "language": "eng"
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "sidecar.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Subtitles: external SRT and WebVTT files"
+      ],
+      "duration": 3.02,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0,
+      "externalSubtitles": [
+        "sidecar.srt",
+        "sidecar.fr.vtt"
+      ]
+    },
+    {
+      "file": "chapters.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Navigation: chapters"
+      ],
+      "duration": 6.02,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 180,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 3
+    },
+    {
+      "file": "tone-replaygain.flac",
+      "engine": "avFoundation",
+      "covers": [
+        "Audio: FLAC with ReplayGain tags"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "flac",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone.opus",
+      "engine": "vlc",
+      "covers": [
+        "Audio: Opus"
+      ],
+      "duration": 3.01,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "opus",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone.ogg",
+      "engine": "vlc",
+      "covers": [
+        "Audio: Vorbis"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "vorbis",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone-alac.m4a",
+      "engine": "avFoundation",
+      "covers": [
+        "Audio: ALAC"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "alac",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone.wma",
+      "engine": "vlc",
+      "covers": [
+        "Audio: WMA"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "wmav2",
+          "channels": 1,
+          "sampleRate": 44100
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone.mka",
+      "engine": "vlc",
+      "covers": [
+        "Audio: E-AC-3 in Matroska audio"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "eac3",
+          "channels": 1,
+          "sampleRate": 48000
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "tone.aiff",
+      "engine": "avFoundation",
+      "covers": [
+        "Audio: AIFF"
+      ],
+      "duration": 3.0,
+      "streams": [
+        {
+          "kind": "audio",
+          "codec": "pcm_s16be",
+          "channels": 1,
+          "sampleRate": 22050
+        }
+      ],
+      "chapters": 0
+    },
+    {
+      "file": "dvdsub.mkv",
+      "engine": "vlc",
+      "covers": [
+        "Subtitles: DVD (VobSub) pictures"
+      ],
+      "duration": 2.04,
+      "streams": [
+        {
+          "kind": "video",
+          "codec": "h264",
+          "width": 320,
+          "height": 214,
+          "pixelFormat": "yuv420p"
+        },
+        {
+          "kind": "audio",
+          "codec": "aac",
+          "channels": 1,
+          "sampleRate": 48000
+        },
+        {
+          "kind": "subtitle",
+          "codec": "dvd_subtitle",
+          "language": "eng"
+        }
+      ],
+      "chapters": 0
+    }
+  ],
+  "discs": [
+    {
+      "path": "dvd",
+      "kind": "videoTS",
+      "titles": 2,
+      "hasMenu": true,
+      "covers": [
+        "Discs: VIDEO_TS folder with a menu"
+      ]
+    },
+    {
+      "path": "dvd.iso",
+      "kind": "iso",
+      "titles": 2,
+      "hasMenu": true,
+      "covers": [
+        "Discs: DVD ISO image"
+      ]
+    }
+  ],
+  "playlists": [
+    {
+      "file": "playlist.m3u",
+      "items": [
+        "tone.opus",
+        "tone.ogg",
+        "tone-alac.m4a"
+      ],
+      "covers": [
+        "Playlists: M3U"
+      ]
+    },
+    {
+      "file": "playlist.pls",
+      "items": [
+        "tone.opus",
+        "tone.wma"
+      ],
+      "covers": [
+        "Playlists: PLS"
+      ]
+    },
+    {
+      "file": "playlist.xspf",
+      "items": [
+        "tone.ogg",
+        "tone.mka",
+        "tone.aiff"
+      ],
+      "covers": [
+        "Playlists: XSPF"
+      ]
+    },
+    {
+      "file": "album.cue",
+      "items": [
+        "album.flac",
+        "album.flac",
+        "album.flac"
+      ],
+      "starts": [
+        0,
+        3,
+        6
+      ],
+      "covers": [
+        "Playlists: CUE sheet"
+      ]
+    }
+  ]
+}

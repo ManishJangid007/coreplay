@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:3,Parity - Opus
+tone.opus
+#EXTINF:3,Parity - Vorbis
+tone.ogg
+#EXTINF:3,Parity - ALAC
+tone-alac.m4a

@@ -19,131 +19,133 @@ import VLCKit
 /// write libVLC's log to `build/vlc-<run>.log`. If the main thread locks up,
 /// a watchdog samples every thread into `build/hang-<run>.txt` and ends the
 /// test process, so the build script carries on instead of hanging.
-@MainActor
-@Suite("Playback smoke tests", .serialized)
-struct PlaybackSmokeTests {
-    enum VLCSetup: String, CaseIterable, Sendable {
-        /// A plain view as the drawable: no Picture in Picture hooks.
-        case plainView = "plain-view"
-        /// The controller's view, which offers VLC Picture in Picture.
-        case pictureInPictureView = "pip-view"
-        /// The controller's view, with every option set before play as the controller does.
-        case pictureInPictureViewWithOptions = "pip-view-options"
-    }
+extension RealMediaTests {
+    @MainActor
+    @Suite("Playback smoke tests", .serialized)
+    struct PlaybackSmokeTests {
+        enum VLCSetup: String, CaseIterable, Sendable {
+            /// A plain view as the drawable: no Picture in Picture hooks.
+            case plainView = "plain-view"
+            /// The controller's view, which offers VLC Picture in Picture.
+            case pictureInPictureView = "pip-view"
+            /// The controller's view, with every option set before play as the controller does.
+            case pictureInPictureViewWithOptions = "pip-view-options"
+        }
 
-    @Test func controllerPlaysWithAVFoundation() async throws {
-        try await playThroughController(.avFoundation)
-    }
+        @Test func controllerPlaysWithAVFoundation() async throws {
+            try await playThroughController(.avFoundation)
+        }
 
-    @Test(arguments: 1...3)
-    func controllerPlaysWithVLC(run: Int) async throws {
-        try await playThroughController(.vlc, run: run)
-    }
+        @Test(arguments: 1...3)
+        func controllerPlaysWithVLC(run: Int) async throws {
+            try await playThroughController(.vlc, run: run)
+        }
 
-    /// Every option away from its default, set while the video opens, so
-    /// they reach libVLC while it creates the video output.
-    @Test func controllerPlaysWithVLCAndChosenOptions() async throws {
-        try await playThroughController(.vlc, choosesOptions: true)
-    }
+        /// Every option away from its default, set while the video opens, so
+        /// they reach libVLC while it creates the video output.
+        @Test func controllerPlaysWithVLCAndChosenOptions() async throws {
+            try await playThroughController(.vlc, choosesOptions: true)
+        }
 
-    @Test(arguments: VLCSetup.allCases)
-    func vlcEnginePlays(_ setup: VLCSetup) async throws {
-        let name = "vlc-\(setup.rawValue)"
-        let watchdog = Watchdog(name: name, limit: 30)
-        defer { watchdog.finish() }
-        let movie = try await TestMovie.url()
+        @Test(arguments: VLCSetup.allCases)
+        func vlcEnginePlays(_ setup: VLCSetup) async throws {
+            let name = "vlc-\(setup.rawValue)"
+            let watchdog = Watchdog(name: name, limit: 30)
+            defer { watchdog.finish() }
+            let movie = try await TestMovie.url()
 
-        let configuration = EngineConfiguration()
-        let library = VLCLibraryProvider().library(options: configuration.libVLCLibraryOptions)
-        let log = try VLCLogFile(name: name, library: library)
-        defer { log.close() }
-        let engine = VLCKitEngine(library: library, mediaOptions: configuration.libVLCMediaOptions)
-        let view: PlatformVideoView = setup == .plainView ? PlatformVideoView(frame: .zero) : VideoHostView(frame: .zero)
-        let window = TestWindow(showing: view)
-        defer { window.close() }
+            let configuration = EngineConfiguration()
+            let library = VLCLibraryProvider().library(options: configuration.libVLCLibraryOptions)
+            let log = try VLCLogFile(name: name, library: library)
+            defer { log.close() }
+            let engine = VLCKitEngine(library: library, mediaOptions: configuration.libVLCMediaOptions)
+            let view: PlatformVideoView = setup == .plainView ? PlatformVideoView(frame: .zero) : VideoHostView(frame: .zero)
+            let window = TestWindow(showing: view)
+            defer { window.close() }
 
-        engine.attachVideoOutput(to: view)
-        let events = engine.events
-        let recorder = Task { @MainActor in
-            for await event in events {
-                Trace.write("\(name): event \(event)")
+            engine.attachVideoOutput(to: view)
+            let events = engine.events
+            let recorder = Task { @MainActor in
+                for await event in events {
+                    Trace.write("\(name): event \(event)")
+                }
             }
-        }
-        defer { recorder.cancel() }
+            defer { recorder.cancel() }
 
-        Trace.write("\(name): load")
-        try await engine.load(PlaybackItem(url: movie, kind: .video, title: "Smoke"))
-        if setup == .pictureInPictureViewWithOptions {
-            engine.fillMode = .fit
-            engine.aspectRatio = nil
-            engine.cropRatio = nil
-            engine.videoAdjustments = .neutral
-            engine.deinterlace = .automatic
-            engine.stereoMode = .automatic
-            engine.equalizer = .flat
-            engine.subtitleScale = 1
-        }
-        Trace.write("\(name): play")
-        engine.play()
-        let played = await waitUntil(seconds: 10, name: name, status: { "state \(engine.state)" }) {
-            engine.state == .playing && engine.currentTime > 1
-        }
-        Trace.write("\(name): \(played ? "played" : "DID NOT PLAY"), state \(engine.state), time \(engine.currentTime)")
-        #expect(played, "\(name): state \(engine.state), time \(engine.currentTime)")
-        await engine.shutdown()
-        Trace.write("\(name): shut down")
-    }
-
-    private func playThroughController(_ preference: EnginePreference, run: Int = 1, choosesOptions: Bool = false) async throws {
-        let name = "controller-\(preference.rawValue)\(choosesOptions ? "-options" : "")-\(run)"
-        let watchdog = Watchdog(name: name, limit: 30)
-        defer { watchdog.finish() }
-        let movie = try await TestMovie.url()
-
-        let controller = PlaybackController()
-        let window = TestWindow(showing: controller.videoView)
-        defer { window.close() }
-
-        Trace.write("\(name): load")
-        await controller.load(PlaybackItem(url: movie, kind: .video, title: "Smoke", enginePreference: preference))
-        Trace.write("\(name): load returned, engine \(String(describing: controller.activeEngine)), state \(controller.state)")
-        if choosesOptions {
-            controller.setFillMode(.fill)
-            await controller.setAspectRatio(VideoRatio(4, 3))
-            await controller.setCropRatio(VideoRatio(16, 9))
-            await controller.setVideoAdjustments(VideoAdjustments(brightness: 1.2, contrast: 1.1, saturation: 1.3, hue: 10, gamma: 1.1))
-            await controller.setDeinterlace(.on)
-            await controller.setStereoMode(.mono)
-            await controller.setEqualizer(EqualizerSettings(isEnabled: true, presetName: nil, preamp: 3, bands: [4, 3, 2, 1, 0, 0, 1, 2, 3, 4]))
-            await controller.setSubtitleSize(.large)
-            Trace.write("\(name): options chosen, state \(controller.state)")
-        }
-        let played = await waitUntil(seconds: 10, name: name, status: { "state \(controller.state), PiP possible \(controller.pictureInPicture.isPossible)" }) {
-            controller.state == .playing && controller.currentTime > 1
-        }
-        Trace.write("\(name): \(played ? "played" : "DID NOT PLAY"), state \(controller.state), time \(controller.currentTime)")
-        #expect(played, "\(name): state \(controller.state), time \(controller.currentTime)")
-        #expect(controller.activeEngine == (preference == .vlc ? .vlc : .avFoundation))
-        await controller.stop()
-        Trace.write("\(name): stopped")
-    }
-
-    /// Polls `condition` every 50 ms, noting each new status in the trace.
-    private func waitUntil(seconds: Double, name: String, status: () -> String, _ condition: () -> Bool) async -> Bool {
-        let deadline = Date().addingTimeInterval(seconds)
-        var lastStatus = ""
-        while Date() < deadline {
-            let current = status()
-            if current != lastStatus {
-                Trace.write("\(name): \(current)")
-                lastStatus = current
+            Trace.write("\(name): load")
+            try await engine.load(PlaybackItem(url: movie, kind: .video, title: "Smoke"))
+            if setup == .pictureInPictureViewWithOptions {
+                engine.fillMode = .fit
+                engine.aspectRatio = nil
+                engine.cropRatio = nil
+                engine.videoAdjustments = .neutral
+                engine.deinterlace = .automatic
+                engine.stereoMode = .automatic
+                engine.equalizer = .flat
+                engine.subtitleScale = 1
             }
-            if condition() {
-                return true
+            Trace.write("\(name): play")
+            engine.play()
+            let played = await waitUntil(seconds: 10, name: name, status: { "state \(engine.state)" }) {
+                engine.state == .playing && engine.currentTime > 1
             }
-            try? await Task.sleep(for: .milliseconds(50))
+            Trace.write("\(name): \(played ? "played" : "DID NOT PLAY"), state \(engine.state), time \(engine.currentTime)")
+            #expect(played, "\(name): state \(engine.state), time \(engine.currentTime)")
+            await engine.shutdown()
+            Trace.write("\(name): shut down")
         }
-        return false
+
+        private func playThroughController(_ preference: EnginePreference, run: Int = 1, choosesOptions: Bool = false) async throws {
+            let name = "controller-\(preference.rawValue)\(choosesOptions ? "-options" : "")-\(run)"
+            let watchdog = Watchdog(name: name, limit: 30)
+            defer { watchdog.finish() }
+            let movie = try await TestMovie.url()
+
+            let controller = PlaybackController()
+            let window = TestWindow(showing: controller.videoView)
+            defer { window.close() }
+
+            Trace.write("\(name): load")
+            await controller.load(PlaybackItem(url: movie, kind: .video, title: "Smoke", enginePreference: preference))
+            Trace.write("\(name): load returned, engine \(String(describing: controller.activeEngine)), state \(controller.state)")
+            if choosesOptions {
+                controller.setFillMode(.fill)
+                await controller.setAspectRatio(VideoRatio(4, 3))
+                await controller.setCropRatio(VideoRatio(16, 9))
+                await controller.setVideoAdjustments(VideoAdjustments(brightness: 1.2, contrast: 1.1, saturation: 1.3, hue: 10, gamma: 1.1))
+                await controller.setDeinterlace(.on)
+                await controller.setStereoMode(.mono)
+                await controller.setEqualizer(EqualizerSettings(isEnabled: true, presetName: nil, preamp: 3, bands: [4, 3, 2, 1, 0, 0, 1, 2, 3, 4]))
+                await controller.setSubtitleSize(.large)
+                Trace.write("\(name): options chosen, state \(controller.state)")
+            }
+            let played = await waitUntil(seconds: 10, name: name, status: { "state \(controller.state), PiP possible \(controller.pictureInPicture.isPossible)" }) {
+                controller.state == .playing && controller.currentTime > 1
+            }
+            Trace.write("\(name): \(played ? "played" : "DID NOT PLAY"), state \(controller.state), time \(controller.currentTime)")
+            #expect(played, "\(name): state \(controller.state), time \(controller.currentTime)")
+            #expect(controller.activeEngine == (preference == .vlc ? .vlc : .avFoundation))
+            await controller.stop()
+            Trace.write("\(name): stopped")
+        }
+
+        /// Polls `condition` every 50 ms, noting each new status in the trace.
+        private func waitUntil(seconds: Double, name: String, status: () -> String, _ condition: () -> Bool) async -> Bool {
+            let deadline = Date().addingTimeInterval(seconds)
+            var lastStatus = ""
+            while Date() < deadline {
+                let current = status()
+                if current != lastStatus {
+                    Trace.write("\(name): \(current)")
+                    lastStatus = current
+                }
+                if condition() {
+                    return true
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return false
+        }
     }
 }
 
@@ -411,9 +413,8 @@ final class Trace: @unchecked Sendable {
                 // the earlier process's lines are the interesting ones.
                 try? FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
                 let url = Self.folder.appending(path: "playback-trace.txt")
-                let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-                if modified.map({ Date().timeIntervalSince($0) > 300 }) ?? true {
-                    // Left by an earlier build: start again.
+                if TestSession.isNew(marker: "playback-trace") {
+                    // Left by an earlier test run: start again.
                     FileManager.default.createFile(atPath: url.path, contents: nil)
                 }
                 handle = try? FileHandle(forWritingTo: url)
@@ -509,6 +510,21 @@ final class VLCLogFile {
     func close() {
         library.loggers = nil
         try? handle.close()
+    }
+}
+
+/// One `xcodebuild test` run. It relaunches the test process after a crash,
+/// so files that collect results append within a run and start afresh in the
+/// next one: the run is told apart by xcodebuild's process ID.
+enum TestSession {
+    static func isNew(marker name: String) -> Bool {
+        let marker = Trace.folder.appending(path: ".\(name).session")
+        let session = "\(getppid())"
+        let previous = try? String(contentsOf: marker, encoding: .utf8)
+        guard previous != session else { return false }
+        try? FileManager.default.createDirectory(at: Trace.folder, withIntermediateDirectories: true)
+        try? Data(session.utf8).write(to: marker)
+        return true
     }
 }
 #endif

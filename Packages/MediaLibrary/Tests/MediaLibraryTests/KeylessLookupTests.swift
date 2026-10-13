@@ -7,141 +7,143 @@ import Testing
 import UniformTypeIdentifiers
 @testable import MediaLibrary
 
-/// Looking videos up without a TMDB key, against canned TVmaze, Wikipedia
-/// and Wikidata responses (no network).
-@Suite("Lookups without a key", .serialized)
-struct KeylessLookupTests {
-    @Test func moviesComeFromWikipediaAndShowsFromTVmaze() async throws {
-        let harness = try LookupHarness()
-        defer { harness.cleanUp() }
-        try harness.write("Heat (1995).mkv")
-        try harness.write("Breaking Bad/Season 1/Breaking.Bad.S01E01.mkv")
-        try harness.write("Breaking Bad/Season 1/Breaking.Bad.S01E02.mkv")
-        try await harness.scan()
+extension LibraryTests {
+    /// Looking videos up without a TMDB key, against canned TVmaze, Wikipedia
+    /// and Wikidata responses (no network).
+    @Suite("Lookups without a key", .serialized)
+    struct KeylessLookupTests {
+        @Test func moviesComeFromWikipediaAndShowsFromTVmaze() async throws {
+            let harness = try LookupHarness()
+            defer { harness.cleanUp() }
+            try harness.write("Heat (1995).mkv")
+            try harness.write("Breaking Bad/Season 1/Breaking.Bad.S01E01.mkv")
+            try harness.write("Breaking Bad/Season 1/Breaking.Bad.S01E02.mkv")
+            try await harness.scan()
 
-        let session = StubURLProtocol.session(routes: Self.routes())
-        let settled = try await harness.indexer.lookUpPendingWithoutKey(
-            tvmaze: TVmazeClient(session: session),
-            wikipedia: WikipediaClient(session: session),
-            artworkStore: harness.store
-        )
-        #expect(settled >= 2)
+            let session = StubURLProtocol.session(routes: Self.routes())
+            let settled = try await harness.indexer.lookUpPendingWithoutKey(
+                tvmaze: TVmazeClient(session: session),
+                wikipedia: WikipediaClient(session: session),
+                artworkStore: harness.store
+            )
+            #expect(settled >= 2)
 
-        let videos = try harness.fetch(Video.self)
-        let movie = try #require(videos.first { $0.kind == .movie })
-        #expect(movie.matchState == .keyless)
-        #expect(movie.title == "Heat")
-        #expect(movie.year == 1995)
-        #expect(movie.overview?.hasPrefix("Heat is a 1995 American crime film") == true)
-        #expect(movie.imdbID == "tt0113277")
-        #expect(movie.tmdbID == nil)
-        #expect(movie.posterKey != nil)
+            let videos = try harness.fetch(Video.self)
+            let movie = try #require(videos.first { $0.kind == .movie })
+            #expect(movie.matchState == .keyless)
+            #expect(movie.title == "Heat")
+            #expect(movie.year == 1995)
+            #expect(movie.overview?.hasPrefix("Heat is a 1995 American crime film") == true)
+            #expect(movie.imdbID == "tt0113277")
+            #expect(movie.tmdbID == nil)
+            #expect(movie.posterKey != nil)
 
-        let show = try #require(try harness.fetch(TVShow.self).first)
-        #expect(show.matchState == .keyless)
-        #expect(show.title == "Breaking Bad")
-        #expect(show.network == "AMC")
-        #expect(show.overview == "Breaking Bad follows Walter White & his partner.")
-        #expect(show.posterKey != nil)
-        #expect(show.backdropKey != nil)
-        #expect(show.cast.first?.name == "Bryan Cranston")
+            let show = try #require(try harness.fetch(TVShow.self).first)
+            #expect(show.matchState == .keyless)
+            #expect(show.title == "Breaking Bad")
+            #expect(show.network == "AMC")
+            #expect(show.overview == "Breaking Bad follows Walter White & his partner.")
+            #expect(show.posterKey != nil)
+            #expect(show.backdropKey != nil)
+            #expect(show.cast.first?.name == "Bryan Cranston")
 
-        let episodes = videos.filter { $0.kind == .episode }.sorted { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }
-        #expect(episodes.count == 2)
-        #expect(episodes[0].title == "Pilot")
-        #expect(episodes[0].overview == "Walt begins.")
-        #expect(episodes[0].stillKey != nil)
-        #expect(episodes[0].matchState == .keyless)
-        #expect(episodes[1].title == "Cat's in the Bag...")
-        #expect(episodes[1].stillKey == nil)
-    }
+            let episodes = videos.filter { $0.kind == .episode }.sorted { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }
+            #expect(episodes.count == 2)
+            #expect(episodes[0].title == "Pilot")
+            #expect(episodes[0].overview == "Walt begins.")
+            #expect(episodes[0].stillKey != nil)
+            #expect(episodes[0].matchState == .keyless)
+            #expect(episodes[1].title == "Cat's in the Bag...")
+            #expect(episodes[1].stillKey == nil)
+        }
 
-    @Test func localArtworkWinsAndUnknownTitlesAreNotFound() async throws {
-        let harness = try LookupHarness()
-        defer { harness.cleanUp() }
-        try harness.write("Heat (1995).mkv")
-        try harness.write("Heat (1995)-poster.png", LookupHarness.png())
-        try harness.write("Some Film Nobody Knows (2003).mkv")
-        try await harness.scan()
+        @Test func localArtworkWinsAndUnknownTitlesAreNotFound() async throws {
+            let harness = try LookupHarness()
+            defer { harness.cleanUp() }
+            try harness.write("Heat (1995).mkv")
+            try harness.write("Heat (1995)-poster.png", LookupHarness.png())
+            try harness.write("Some Film Nobody Knows (2003).mkv")
+            try await harness.scan()
 
-        let before = try #require(try harness.fetch(Video.self).first { $0.title == "Heat" })
-        let localPoster = try #require(before.posterKey)
-        #expect(before.localFields.contains(VideoField.artwork.rawValue))
+            let before = try #require(try harness.fetch(Video.self).first { $0.title == "Heat" })
+            let localPoster = try #require(before.posterKey)
+            #expect(before.localFields.contains(VideoField.artwork.rawValue))
 
-        let session = StubURLProtocol.session(routes: Self.routes())
-        _ = try await harness.indexer.lookUpPendingWithoutKey(
-            tvmaze: TVmazeClient(session: session),
-            wikipedia: WikipediaClient(session: session),
-            artworkStore: harness.store
-        )
+            let session = StubURLProtocol.session(routes: Self.routes())
+            _ = try await harness.indexer.lookUpPendingWithoutKey(
+                tvmaze: TVmazeClient(session: session),
+                wikipedia: WikipediaClient(session: session),
+                artworkStore: harness.store
+            )
 
-        let videos = try harness.fetch(Video.self)
-        let heat = try #require(videos.first { $0.title == "Heat" })
-        #expect(heat.matchState == .keyless)
-        #expect(heat.posterKey == localPoster)
-        let unknown = try #require(videos.first { $0.title.hasPrefix("Some Film") })
-        #expect(unknown.matchState == .notFound)
-    }
+            let videos = try harness.fetch(Video.self)
+            let heat = try #require(videos.first { $0.title == "Heat" })
+            #expect(heat.matchState == .keyless)
+            #expect(heat.posterKey == localPoster)
+            let unknown = try #require(videos.first { $0.title.hasPrefix("Some Film") })
+            #expect(unknown.matchState == .notFound)
+        }
 
-    // MARK: Canned responses
+        // MARK: Canned responses
 
-    static func routes() -> @Sendable (URL) -> (Int, Data) {
-        let image = (try? LookupHarness.png()) ?? Data()
-        return { url in
-            let host = url.host() ?? ""
-            let path = url.path()
-            let query = url.query(percentEncoded: false) ?? ""
-            switch host {
-            case "en.wikipedia.org" where query.contains("gsrsearch=Heat"):
-                return (200, Data(wikipediaHeat.utf8))
-            case "en.wikipedia.org":
-                return (200, Data(#"{"batchcomplete": true}"#.utf8))
-            case "www.wikidata.org":
-                return (200, Data(#"{"claims": {"P345": [{"mainsnak": {"datavalue": {"value": "tt0113277", "type": "string"}}}]}}"#.utf8))
-            case "api.tvmaze.com" where path == "/search/shows":
-                return (200, Data(tvmazeSearch.utf8))
-            case "api.tvmaze.com" where path == "/shows/169/images":
-                return (200, Data(#"[{"id": 9, "type": "background", "main": true, "resolutions": {"original": {"url": "https://static.tvmaze.com/bg.png"}}}]"#.utf8))
-            case "api.tvmaze.com" where path == "/shows/169":
-                return (200, Data(tvmazeShow.utf8))
-            case "upload.wikimedia.org", "static.tvmaze.com":
-                return (200, image)
-            default:
-                return (404, Data())
+        static func routes() -> @Sendable (URL) -> (Int, Data) {
+            let image = (try? LookupHarness.png()) ?? Data()
+            return { url in
+                let host = url.host() ?? ""
+                let path = url.path()
+                let query = url.query(percentEncoded: false) ?? ""
+                switch host {
+                case "en.wikipedia.org" where query.contains("gsrsearch=Heat"):
+                    return (200, Data(wikipediaHeat.utf8))
+                case "en.wikipedia.org":
+                    return (200, Data(#"{"batchcomplete": true}"#.utf8))
+                case "www.wikidata.org":
+                    return (200, Data(#"{"claims": {"P345": [{"mainsnak": {"datavalue": {"value": "tt0113277", "type": "string"}}}]}}"#.utf8))
+                case "api.tvmaze.com" where path == "/search/shows":
+                    return (200, Data(tvmazeSearch.utf8))
+                case "api.tvmaze.com" where path == "/shows/169/images":
+                    return (200, Data(#"[{"id": 9, "type": "background", "main": true, "resolutions": {"original": {"url": "https://static.tvmaze.com/bg.png"}}}]"#.utf8))
+                case "api.tvmaze.com" where path == "/shows/169":
+                    return (200, Data(tvmazeShow.utf8))
+                case "upload.wikimedia.org", "static.tvmaze.com":
+                    return (200, image)
+                default:
+                    return (404, Data())
+                }
             }
         }
+
+        static let wikipediaHeat = """
+        {"batchcomplete": true, "query": {"pages": [
+          {"pageid": 1, "ns": 0, "title": "Heat (1995 film)", "index": 1, "description": "1995 film by Michael Mann",
+           "original": {"source": "https://upload.wikimedia.org/Heat.png", "width": 220, "height": 326},
+           "pageprops": {"wikibase_item": "Q472512"},
+           "extract": "Heat is a 1995 American crime film written and directed by Michael Mann."},
+          {"pageid": 2, "ns": 0, "title": "Heat (soundtrack)", "index": 2, "description": "1995 soundtrack album"}
+        ]}}
+        """
+
+        static let tvmazeSearch = """
+        [{"score": 0.9, "show": {"id": 169, "name": "Breaking Bad", "premiered": "2008-01-20", "weight": 98}}]
+        """
+
+        static let tvmazeShow = """
+        {"id": 169, "name": "Breaking Bad", "premiered": "2008-01-20", "genres": ["Drama", "Crime"],
+         "rating": {"average": 9.2}, "network": {"id": 20, "name": "AMC"},
+         "image": {"medium": "https://static.tvmaze.com/m.png", "original": "https://static.tvmaze.com/o.png"},
+         "summary": "<p><b>Breaking Bad</b> follows Walter White &amp; his partner.</p>",
+         "_embedded": {
+           "episodes": [
+             {"id": 1, "name": "Pilot", "season": 1, "number": 1, "airdate": "2008-01-20", "runtime": 58,
+              "image": {"medium": "https://static.tvmaze.com/e1m.png", "original": "https://static.tvmaze.com/e1.png"}, "summary": "<p>Walt begins.</p>"},
+             {"id": 2, "name": "Cat's in the Bag...", "season": 1, "number": 2, "airdate": "2008-01-27", "runtime": 48, "image": null, "summary": null},
+             {"id": 3, "name": "Seven Thirty-Seven", "season": 2, "number": 1, "airdate": "2009-03-08"}
+           ],
+           "seasons": [{"id": 1, "number": 1, "name": "", "premiereDate": "2008-01-20", "image": {"original": "https://static.tvmaze.com/s1.png"}}],
+           "cast": [{"person": {"name": "Bryan Cranston", "image": {"medium": "https://static.tvmaze.com/bc.png"}}, "character": {"name": "Walter White"}}]
+         }}
+        """
     }
-
-    static let wikipediaHeat = """
-    {"batchcomplete": true, "query": {"pages": [
-      {"pageid": 1, "ns": 0, "title": "Heat (1995 film)", "index": 1, "description": "1995 film by Michael Mann",
-       "original": {"source": "https://upload.wikimedia.org/Heat.png", "width": 220, "height": 326},
-       "pageprops": {"wikibase_item": "Q472512"},
-       "extract": "Heat is a 1995 American crime film written and directed by Michael Mann."},
-      {"pageid": 2, "ns": 0, "title": "Heat (soundtrack)", "index": 2, "description": "1995 soundtrack album"}
-    ]}}
-    """
-
-    static let tvmazeSearch = """
-    [{"score": 0.9, "show": {"id": 169, "name": "Breaking Bad", "premiered": "2008-01-20", "weight": 98}}]
-    """
-
-    static let tvmazeShow = """
-    {"id": 169, "name": "Breaking Bad", "premiered": "2008-01-20", "genres": ["Drama", "Crime"],
-     "rating": {"average": 9.2}, "network": {"id": 20, "name": "AMC"},
-     "image": {"medium": "https://static.tvmaze.com/m.png", "original": "https://static.tvmaze.com/o.png"},
-     "summary": "<p><b>Breaking Bad</b> follows Walter White &amp; his partner.</p>",
-     "_embedded": {
-       "episodes": [
-         {"id": 1, "name": "Pilot", "season": 1, "number": 1, "airdate": "2008-01-20", "runtime": 58,
-          "image": {"medium": "https://static.tvmaze.com/e1m.png", "original": "https://static.tvmaze.com/e1.png"}, "summary": "<p>Walt begins.</p>"},
-         {"id": 2, "name": "Cat's in the Bag...", "season": 1, "number": 2, "airdate": "2008-01-27", "runtime": 48, "image": null, "summary": null},
-         {"id": 3, "name": "Seven Thirty-Seven", "season": 2, "number": 1, "airdate": "2009-03-08"}
-       ],
-       "seasons": [{"id": 1, "number": 1, "name": "", "premiereDate": "2008-01-20", "image": {"original": "https://static.tvmaze.com/s1.png"}}],
-       "cast": [{"person": {"name": "Bryan Cranston", "image": {"medium": "https://static.tvmaze.com/bc.png"}}, "character": {"name": "Walter White"}}]
-     }}
-    """
 }
 
 /// A library in memory over a temporary folder of fake video files.

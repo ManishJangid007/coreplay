@@ -56,6 +56,8 @@ public struct SettingsView: View {
 
 private struct PlaybackSettingsSection: View {
     @Bindable var settings: AppSettings
+    @AppStorage(PlaybackPreferences.autoplaysNextEpisodeKey) private var autoplaysNextEpisode = true
+    @AppStorage(PlaybackPreferences.playsPreviewsKey) private var playsPreviews = true
 
     var body: some View {
         Section {
@@ -64,6 +66,14 @@ private struct PlaybackSettingsSection: View {
             Text("Video")
         } footer: {
             Text("Uses the media engine in your device\u{2019}s chip for smoother playback and longer battery life. Turn off if a video shows artifacts. Applies to the next file you open.")
+        }
+        Section {
+            Toggle("Play Next Episode Automatically", isOn: $autoplaysNextEpisode)
+            Toggle("Play Previews", isOn: $playsPreviews)
+        } header: {
+            Text("Watching")
+        } footer: {
+            Text("When an episode\u{2019}s end credits start, the next one plays after a short countdown. Previews play a few silent seconds of a movie behind its title at the top of Home, Movies and TV Shows.")
         }
     }
 }

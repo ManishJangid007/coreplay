@@ -110,6 +110,13 @@ public protocol PlaybackEngine: AnyObject {
     /// Writes the frame on screen to `url` as a PNG. Requires `.snapshots`.
     func saveSnapshot(to url: URL) async throws
 
+    // MARK: Media info
+
+    /// What's inside the media, stream by stream.
+    func mediaInfo() async -> MediaInfo
+    /// Live figures (bitrate, dropped pictures); `nil` when the engine has none.
+    var statistics: PlaybackStatistics? { get }
+
     /// Stops playback and releases every resource. The engine is unusable afterwards.
     func shutdown() async
 }

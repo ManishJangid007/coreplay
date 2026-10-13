@@ -131,7 +131,12 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Video artwork**: anything without a poster or still gets a frame from
   about a tenth of the way in; Choose Artwork picks another frame or an image.
 - **Watched state** follows the TV app: resume after the first minute, watched
-  from 92% on. Positions live in `PlaybackRecord`, by content fingerprint.
+  from 92% on, or from the start of the end credits when a chapter marks
+  them. Positions live in `PlaybackRecord`, by content fingerprint.
+- **The hero carousel** at the top of Home, Movies and TV Shows features new
+  arrivals, what you're in the middle of, then a pick of unwatched titles that
+  changes daily (`FeaturedPicker`). The watchlist ("+") is a list of IDs in
+  user defaults, so it needs no schema change.
 - **Upgrades**: the schema is versioned (`LibrarySchemaV1`, `V2`) with a
   migration plan, and a test opens a real version 1 library to prove it.
 
@@ -180,6 +185,14 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Scrub previews.** `ScrubPreviews` makes up to 200 small frames per local
   video in the background, coarse to fine, and keeps finished sets in
   Caches/Coreplay/Scrub Previews.
+- **Preview clips.** The hero carousel's clips play in a second
+  `PlaybackController` with the `.preview` purpose: no Picture in Picture,
+  AirPlay, subtitles or scrub previews, and no audio output at all until
+  you unmute (`PlaybackItem.playsAudio`), so other apps' music keeps playing.
+- **Up Next.** At an episode's end credits (a chapter named like "End
+  Credits", or the last 20 seconds) the player offers the next queued episode
+  and starts it after a countdown (`UpNextPolicy`). Settings ▸ Playback turns
+  autoplay off; the next episode then waits on the last frame.
 
 ## Brand
 

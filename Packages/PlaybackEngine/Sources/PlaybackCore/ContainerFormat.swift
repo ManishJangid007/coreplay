@@ -38,6 +38,45 @@ public struct ContainerFormat: Hashable, Sendable {
 
     public var isHLSPlaylist: Bool { fileExtension == "m3u8" }
 
+    /// The container's everyday name ("Matroska", "QuickTime"), for Media Info.
+    public var displayName: String? {
+        ContainerFormat.displayNames[fileExtension]
+    }
+
+    private static let displayNames: [String: String] = {
+        var names: [String: String] = [:]
+        func add(_ extensions: [String], _ name: String) {
+            for ext in extensions { names[ext] = name }
+        }
+        add(["mkv", "mk3d"], "Matroska")
+        add(["mka"], "Matroska Audio")
+        add(["webm"], "WebM")
+        add(["mp4", "m4v"], "MPEG-4")
+        add(["m4a", "m4b", "m4p"], "MPEG-4 Audio")
+        add(["mov", "qt"], "QuickTime")
+        add(["3gp", "3g2"], "3GPP")
+        add(["avi", "divx", "xvid"], "AVI")
+        add(["ts", "m2ts", "mts", "m2t", "tp", "trp"], "MPEG Transport Stream")
+        add(["mpg", "mpeg", "mpe", "vob", "evo"], "MPEG Program Stream")
+        add(["ogv", "ogg", "oga", "ogm", "opus", "spx"], "Ogg")
+        add(["wmv", "wma", "asf"], "Windows Media")
+        add(["flv", "f4v"], "Flash Video")
+        add(["rm", "rmvb", "ra"], "RealMedia")
+        add(["mxf"], "MXF")
+        add(["iso", "img"], "Disc Image")
+        add(["mp3"], "MP3")
+        add(["flac"], "FLAC")
+        add(["wav", "wave", "w64", "rf64"], "WAV")
+        add(["aif", "aiff", "aifc"], "AIFF")
+        add(["caf"], "Core Audio")
+        add(["ape"], "Monkey's Audio")
+        add(["wv"], "WavPack")
+        add(["dts", "dtshd"], "DTS")
+        add(["ac3", "eac3", "ec3"], "Dolby Digital")
+        add(["m3u8"], "HTTP Live Streaming")
+        return names
+    }()
+
     // MARK: - Table
 
     private struct Entry {

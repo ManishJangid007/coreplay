@@ -377,6 +377,13 @@ struct VideoMenuItems: View {
         } else {
             Button("Mark as Watched", systemImage: "checkmark.circle") { library.markWatched([video]) }
         }
+        if video.kind == .movie {
+            if library.isOnWatchlist(video) {
+                Button("Remove from Watchlist", systemImage: "minus.circle") { library.toggleWatchlist(video) }
+            } else {
+                Button("Add to Watchlist", systemImage: "plus.circle") { library.toggleWatchlist(video) }
+            }
+        }
         if showsGoToShow, video.kind == .episode, let show = video.show {
             NavigationLink(value: show) {
                 Label("Go to Show", systemImage: "tv")
@@ -418,6 +425,11 @@ struct ShowMenuItems: View {
         let playback = VideoPlayback(library: library, session: session, actions: actions)
         Button("Play", systemImage: "play.fill") { playback.play(show) }
         Divider()
+        if library.isOnWatchlist(show) {
+            Button("Remove from Watchlist", systemImage: "minus.circle") { library.toggleWatchlist(show) }
+        } else {
+            Button("Add to Watchlist", systemImage: "plus.circle") { library.toggleWatchlist(show) }
+        }
         Button("Mark Show as Watched", systemImage: "checkmark.circle") { library.markWatched(show.episodes) }
         Button("Mark Show as Unwatched", systemImage: "eye.slash") { library.markUnwatched(show.episodes) }
         Divider()

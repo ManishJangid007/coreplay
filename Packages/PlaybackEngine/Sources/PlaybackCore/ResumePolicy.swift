@@ -18,13 +18,21 @@ public enum ResumePolicy {
         case watched
     }
 
-    public static func outcome(position: TimeInterval, duration: TimeInterval?) -> Outcome {
+    /// - Parameter creditsStart: Where the file's end credits start (a
+    ///   chapter, see `UpNextPolicy`). From there, it's watched too.
+    public static func outcome(position: TimeInterval, duration: TimeInterval?, creditsStart: TimeInterval? = nil) -> Outcome {
         guard position.isFinite, position > 0 else { return .fromStart }
         if let duration, duration.isFinite, duration > 0, position >= duration * watchedFraction {
             return .watched
         }
+        // A few seconds early still counts: progress is sampled, not exact.
+        if let creditsStart, creditsStart > minimumPosition, position >= creditsStart - creditsTolerance {
+            return .watched
+        }
         return position >= minimumPosition ? .resume(at: position) : .fromStart
     }
+
+    static let creditsTolerance: TimeInterval = 5
 
     /// Where to start a video that was stopped at `position` (`nil`: the beginning).
     public static func startPosition(saved position: TimeInterval?, duration: TimeInterval?) -> TimeInterval? {
@@ -60,12 +68,14 @@ public struct WatchProgressTracker: Sendable {
     private var lastPosition: TimeInterval = 0
     private var lastDuration: TimeInterval?
     private var lastSavedPosition: TimeInterval?
+    private var lastCreditsStart: TimeInterval?
     private var wasPlaying = false
     private var reportedWatched = false
 
     public init() {}
 
-    public mutating func update(itemID newItemID: UUID?, position: TimeInterval, duration: TimeInterval?, isPlaying: Bool) -> [Save] {
+    /// - Parameter creditsStart: Where the current item's end credits start, when known.
+    public mutating func update(itemID newItemID: UUID?, position: TimeInterval, duration: TimeInterval?, isPlaying: Bool, creditsStart: TimeInterval? = nil) -> [Save] {
         var saves: [Save] = []
         if newItemID != itemID {
             // The previous item was replaced (or stopped): keep where it got to.
@@ -75,6 +85,7 @@ public struct WatchProgressTracker: Sendable {
             itemID = newItemID
             lastPosition = position
             lastDuration = duration
+            lastCreditsStart = creditsStart
             // Where it starts (a resume position) is already saved.
             lastSavedPosition = position > 0 ? position : nil
             wasPlaying = isPlaying
@@ -89,7 +100,10 @@ public struct WatchProgressTracker: Sendable {
         if let duration, duration > 0 {
             lastDuration = duration
         }
-        let outcome = ResumePolicy.outcome(position: lastPosition, duration: lastDuration)
+        if let creditsStart {
+            lastCreditsStart = creditsStart
+        }
+        let outcome = ResumePolicy.outcome(position: lastPosition, duration: lastDuration, creditsStart: lastCreditsStart)
         defer { wasPlaying = isPlaying }
 
         if outcome == .watched {
@@ -113,7 +127,7 @@ public struct WatchProgressTracker: Sendable {
 
     private func finalSave(for itemID: UUID) -> Save? {
         guard !reportedWatched, lastPosition > 0, lastPosition != lastSavedPosition else { return nil }
-        return Save(itemID: itemID, position: lastPosition, duration: lastDuration, outcome: ResumePolicy.outcome(position: lastPosition, duration: lastDuration))
+        return Save(itemID: itemID, position: lastPosition, duration: lastDuration, outcome: ResumePolicy.outcome(position: lastPosition, duration: lastDuration, creditsStart: lastCreditsStart))
     }
 }
 

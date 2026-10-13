@@ -64,6 +64,9 @@ public struct MoviesView: View {
 
 private struct MoviesQueryView: View {
     @Environment(LibraryManager.self) private var library
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @Query private var movies: [Video]
     @State private var opened: Video?
     let layout: LibraryLayout
@@ -96,24 +99,36 @@ private struct MoviesQueryView: View {
                 }
             } else {
                 ScrollView {
-                    LazyVGrid(columns: posterColumns, alignment: .leading, spacing: 26) {
-                        ForEach(shown) { movie in
-                            NavigationLink(value: movie) {
-                                MoviePosterCell(video: movie)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                VideoMenuItems(video: movie)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HeroCarousel(content: .movies, style: heroStyle)
+                        LazyVGrid(columns: posterColumns, alignment: .leading, spacing: 26) {
+                            ForEach(shown) { movie in
+                                NavigationLink(value: movie) {
+                                    MoviePosterCell(video: movie)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    VideoMenuItems(video: movie)
+                                }
                             }
                         }
+                        .padding(Metrics.contentPadding)
                     }
-                    .padding(Metrics.contentPadding)
                 }
+                .heroPageChrome(heroStyle == .fullBleed)
             }
         }
         .navigationDestination(item: $opened) { movie in
             VideoDetailView(video: movie)
         }
+    }
+
+    private var heroStyle: HeroCarousel.Style {
+        #if os(iOS)
+        HeroCarousel.Style.forWidth(isCompact: sizeClass == .compact)
+        #else
+        .fullBleed
+        #endif
     }
 }
 
@@ -178,6 +193,9 @@ public struct TVShowsView: View {
 
 private struct TVShowsQueryView: View {
     @Environment(LibraryManager.self) private var library
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @Query private var shows: [TVShow]
     @State private var opened: TVShow?
     let layout: LibraryLayout
@@ -207,24 +225,36 @@ private struct TVShowsQueryView: View {
                 }
             } else {
                 ScrollView {
-                    LazyVGrid(columns: posterColumns, alignment: .leading, spacing: 26) {
-                        ForEach(shows) { show in
-                            NavigationLink(value: show) {
-                                ShowPosterCell(show: show)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                ShowMenuItems(show: show)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HeroCarousel(content: .shows, style: heroStyle)
+                        LazyVGrid(columns: posterColumns, alignment: .leading, spacing: 26) {
+                            ForEach(shows) { show in
+                                NavigationLink(value: show) {
+                                    ShowPosterCell(show: show)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    ShowMenuItems(show: show)
+                                }
                             }
                         }
+                        .padding(Metrics.contentPadding)
                     }
-                    .padding(Metrics.contentPadding)
                 }
+                .heroPageChrome(heroStyle == .fullBleed)
             }
         }
         .navigationDestination(item: $opened) { show in
             ShowDetailView(show: show)
         }
+    }
+
+    private var heroStyle: HeroCarousel.Style {
+        #if os(iOS)
+        HeroCarousel.Style.forWidth(isCompact: sizeClass == .compact)
+        #else
+        .fullBleed
+        #endif
     }
 }
 

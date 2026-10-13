@@ -113,7 +113,7 @@ public struct PlaybackOptionsView: View {
         case .sound: "Sound"
         case .chapters: "Chapters"
         case .tools: "Tools"
-        case .info: "Now Playing"
+        case .info: "Media Info"
         }
     }
 
@@ -152,7 +152,7 @@ public struct PlaybackOptionsView: View {
             }
             OptionsGroup {
                 NavigationRow("Tools", systemImage: "wand.and.rays", value: toolsSummary) { path.append(.tools) }
-                NavigationRow("Now Playing", systemImage: "info.circle", value: controller.activeEngine?.displayName) { path.append(.info) }
+                NavigationRow("Media Info", systemImage: "info.circle", value: controller.activeEngine?.displayName) { path.append(.info) }
             }
         } else {
             OptionsGroup {
@@ -161,7 +161,7 @@ public struct PlaybackOptionsView: View {
                 if controller.audioTracks.count > 1 {
                     NavigationRow("Audio", systemImage: "speaker.wave.2", value: selectedAudioName) { path.append(.audio) }
                 }
-                NavigationRow("Now Playing", systemImage: "info.circle", value: controller.activeEngine?.displayName) { path.append(.info) }
+                NavigationRow("Media Info", systemImage: "info.circle", value: controller.activeEngine?.displayName) { path.append(.info) }
             }
         }
     }
@@ -472,16 +472,77 @@ public struct PlaybackOptionsView: View {
 
     // MARK: Info
 
-    /// The engine to offer switching to, if it can open this file at all.
-    private func otherEngine(than engine: EngineKind) -> EngineKind? {
-        guard engine == .vlc else { return .vlc }
-        guard let url = controller.currentItem?.url,
-              ContainerFormat(url: url).support != .vlcOnly else { return nil }
-        return .avFoundation
+    private var infoPage: some View {
+        MediaInfoPage(controller: controller)
+    }
+}
+
+/// VLC's Codec Information, in plain language: the engine, the file, every
+/// stream, and live figures while it plays.
+private struct MediaInfoPage: View {
+    let controller: PlaybackController
+    @State private var info: MediaInfo?
+    @State private var statistics: PlaybackStatistics?
+    @State private var fileSize: Int64?
+
+    var body: some View {
+        Group {
+            engineGroup
+            fileGroup
+            if let info {
+                ForEach(Array(info.video.enumerated()), id: \.element.id) { index, stream in
+                    OptionsGroup(title: info.video.count > 1 ? "Video \(index + 1)" : "Video") {
+                        videoRows(stream)
+                    }
+                }
+                if !info.audio.isEmpty {
+                    OptionsGroup(title: "Audio") {
+                        ForEach(Array(info.audio.enumerated()), id: \.element.id) { index, stream in
+                            StreamRow(title: stream.displayName(index: index), detail: audioDetail(stream), isSelected: stream.isSelected)
+                        }
+                    }
+                }
+                if !info.subtitles.isEmpty {
+                    OptionsGroup(title: "Subtitles") {
+                        ForEach(Array(info.subtitles.enumerated()), id: \.element.id) { index, stream in
+                            StreamRow(title: stream.displayName(index: index), detail: subtitleDetail(stream), isSelected: stream.isSelected)
+                        }
+                    }
+                }
+            }
+            if let statistics, statistics.inputBitrate > 0 || controller.hasVideo {
+                OptionsGroup(title: "While Playing") {
+                    if statistics.inputBitrate > 0 {
+                        InfoRow("Reading", value: MediaInfoFormat.bitrate(statistics.inputBitrate))
+                    }
+                    if controller.hasVideo {
+                        InfoRow("Dropped Frames", value: "\(statistics.lostPictures)")
+                    }
+                }
+            }
+        }
+        .task(id: refreshKey) {
+            fileSize = Self.fileSize(of: controller.currentItem?.url)
+            var rounds = 0
+            while !Task.isCancelled {
+                if rounds % 3 == 0 {
+                    // Tracks can change while playing (a subtitle file added).
+                    info = await controller.mediaInfo()
+                }
+                statistics = controller.statistics
+                rounds += 1
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
     }
 
-    @ViewBuilder
-    private var infoPage: some View {
+    private var refreshKey: String {
+        "\(controller.currentItem?.id.uuidString ?? "")-\(controller.activeEngine?.rawValue ?? "")"
+    }
+
+    // MARK: Groups
+
+    private var engineGroup: some View {
         OptionsGroup(title: "Engine") {
             InfoRow("Playing With", value: controller.activeEngine?.displayName ?? "\u{2014}")
             if let reason = controller.routingReason {
@@ -493,23 +554,107 @@ public struct PlaybackOptionsView: View {
                 }
             }
         }
-        OptionsGroup(title: "Media") {
-            if let dimensions = controller.videoDimensions {
-                InfoRow("Resolution", value: "\(dimensions.width) \u{00D7} \(dimensions.height) (\(dimensions.resolutionBadge))")
+    }
+
+    @ViewBuilder
+    private var fileGroup: some View {
+        OptionsGroup(title: "File") {
+            if let url = controller.currentItem?.url {
+                InfoRow("Name", value: url.isFileURL ? url.lastPathComponent : url.absoluteString)
+                if let format = ContainerFormat(url: url).displayName {
+                    InfoRow("Format", value: format)
+                }
+            }
+            if let fileSize {
+                InfoRow("Size", value: MediaInfoFormat.fileSize(fileSize))
             }
             if let duration = controller.duration {
                 InfoRow("Length", value: PlaybackTimeFormatter.string(from: duration))
-            }
-            if let audio = controller.audioTracks.first(where: \.isSelected) {
-                let details = [audio.codec, MediaTrack.channelLayoutName(audio.channelCount)].compactMap { $0 }
-                if !details.isEmpty {
-                    InfoRow("Audio", value: details.joined(separator: ", "))
+                if let fileSize, duration > 0 {
+                    InfoRow("Overall Bitrate", value: MediaInfoFormat.bitrate(Double(fileSize) * 8 / duration))
                 }
             }
-            if let url = controller.currentItem?.url {
-                InfoRow("File", value: url.isFileURL ? url.lastPathComponent : url.absoluteString)
-            }
         }
+    }
+
+    @ViewBuilder
+    private func videoRows(_ stream: MediaInfo.Stream) -> some View {
+        InfoRow("Codec", value: stream.codec ?? stream.fourCC ?? "Unknown")
+        if let width = stream.width, let height = stream.height {
+            let badge = VideoDimensions(width: width, height: height).resolutionBadge
+            InfoRow("Resolution", value: "\(width) \u{00D7} \(height) (\(badge))")
+        }
+        if let frameRate = stream.frameRate {
+            InfoRow("Frame Rate", value: MediaInfoFormat.frameRate(frameRate))
+        }
+        if let range = stream.dynamicRange {
+            InfoRow("Dynamic Range", value: range)
+        }
+        if let rotation = stream.rotation, rotation != 0 {
+            InfoRow("Rotation", value: "\(rotation)\u{00B0}")
+        }
+        if stream.isSpherical {
+            InfoRow("Projection", value: "360\u{00B0}")
+        }
+        if let bitrate = stream.bitrate {
+            InfoRow("Bitrate", value: MediaInfoFormat.bitrate(Double(bitrate)))
+        }
+    }
+
+    private func audioDetail(_ stream: MediaInfo.Stream) -> String {
+        var parts: [String] = [stream.codec ?? stream.fourCC ?? "Unknown"]
+        if let channels = stream.channels { parts.append(MediaInfoFormat.channels(channels)) }
+        if let rate = stream.sampleRate { parts.append(MediaInfoFormat.sampleRate(rate)) }
+        if let bitrate = stream.bitrate { parts.append(MediaInfoFormat.bitrate(Double(bitrate))) }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private func subtitleDetail(_ stream: MediaInfo.Stream) -> String {
+        var parts: [String] = [stream.codec ?? stream.fourCC ?? "Unknown"]
+        if let encoding = stream.textEncoding { parts.append(encoding) }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    /// The engine to offer switching to, if it can open this file at all.
+    private func otherEngine(than engine: EngineKind) -> EngineKind? {
+        guard engine == .vlc else { return .vlc }
+        guard let url = controller.currentItem?.url,
+              ContainerFormat(url: url).support != .vlcOnly else { return nil }
+        return .avFoundation
+    }
+
+    private static func fileSize(of url: URL?) -> Int64? {
+        guard let url, url.isFileURL,
+              let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { return nil }
+        return Int64(size)
+    }
+}
+
+/// One audio or subtitle stream: its name, a check when it's playing, and its format.
+private struct StreamRow: View {
+    let title: String
+    let detail: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: "checkmark")
+                .font(.footnote.weight(.bold))
+                .frame(width: 18)
+                .opacity(isSelected ? 1 : 0)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(Palette.secondaryOnDark)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

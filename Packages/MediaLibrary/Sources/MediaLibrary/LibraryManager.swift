@@ -68,6 +68,9 @@ public final class LibraryManager {
     public internal(set) var usesFreeMetadataSources = false
     /// The last lookup problem (a rejected key, no connection), for Settings.
     public internal(set) var metadataProblem: String?
+    /// Movies and shows the user added with "+" (see `LibraryManager+Watchlist`),
+    /// newest first, as `WatchlistEntry` identifiers.
+    public internal(set) var watchlist: [String] = []
     /// Grabs frames for video artwork; set by the app (it lives in PlaybackEngine).
     @ObservationIgnored public var frameSource: (any VideoFrameSource)?
 
@@ -80,6 +83,7 @@ public final class LibraryManager {
     @ObservationIgnored private var lastFullScan: Date?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored var metadataKey: String?
+    @ObservationIgnored var persistsWatchlist = false
     #if os(macOS)
     @ObservationIgnored private var watchers: [UUID: FolderWatcher] = [:]
     @ObservationIgnored private var pendingWatchRescans: Set<UUID> = []
@@ -106,7 +110,9 @@ public final class LibraryManager {
             metadataKey = MetadataKeyStore.load()
             hasMetadataKey = metadataKey != nil
             usesFreeMetadataSources = UserDefaults.standard.object(forKey: Self.freeSourcesKey) as? Bool ?? true
+            watchlist = UserDefaults.standard.stringArray(forKey: Self.watchlistKey) ?? []
         }
+        persistsWatchlist = !inMemory
     }
 
     public var context: ModelContext { container.mainContext }
