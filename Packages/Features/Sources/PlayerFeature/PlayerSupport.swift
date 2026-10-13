@@ -75,7 +75,9 @@ struct ControllerScrubber: View {
 }
 
 /// The frame at the scrub position, with its time and chapter, like YouTube.
-/// Before frames are ready it shows just the time.
+/// While the position moves it shows the nearest frame of the strip; once it
+/// rests, the exact frame playback will land on. Before any frames are ready
+/// it shows just the time.
 struct ScrubPreviewBubble: View {
     static var width: CGFloat {
         #if os(macOS)
@@ -97,7 +99,7 @@ struct ScrubPreviewBubble: View {
         let previews = controller.scrubPreviews
         let _ = previews.revision
         VStack(spacing: 6) {
-            if let image = previews.image(at: time) {
+            if let image = previews.exactImage(at: time) ?? previews.image(at: time) {
                 let ratio = image.height > 0 ? CGFloat(image.width) / CGFloat(image.height) : 16.0 / 9.0
                 Image(decorative: image, scale: 1)
                     .resizable()

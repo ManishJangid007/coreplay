@@ -149,31 +149,40 @@ struct PlaybackSmokeTests {
 
 // MARK: - Test movie
 
-/// A six-second 320×180 movie: H.264 video with a moving bar, and a quiet
-/// AAC tone, written once per test run.
+/// A 320×180 movie at 30 frames a second: H.264 video with a white bar that
+/// moves 4 pixels a frame (so a frame's time can be read back from it), and
+/// a quiet AAC tone. Written once per length per test run.
 @MainActor
 enum TestMovie {
-    private static var cached: URL?
+    private static var cached: [Int: URL] = [:]
+
+    static let width = 320
+    static let height = 180
+    static let framesPerSecond = 30
+    static let barWidth = 24
 
     enum Failure: Error {
         case writer(String)
     }
 
-    static func url() async throws -> URL {
-        if let cached, FileManager.default.fileExists(atPath: cached.path) {
-            return cached
+    static func url(seconds: Int = 6) async throws -> URL {
+        if let url = cached[seconds], FileManager.default.fileExists(atPath: url.path) {
+            return url
         }
-        let url = FileManager.default.temporaryDirectory.appending(path: "coreplay-smoke-\(UUID().uuidString).mp4")
-        try await write(to: url, seconds: 6)
-        cached = url
+        let url = FileManager.default.temporaryDirectory.appending(path: "coreplay-smoke-\(seconds)s-\(UUID().uuidString).mp4")
+        try await write(to: url, seconds: seconds)
+        cached[seconds] = url
         Trace.write("movie: wrote \(url.lastPathComponent)")
         return url
     }
 
+    /// Where the bar's left edge is in `frame`.
+    static func barStart(frame: Int) -> Int {
+        (frame * 4) % (width - barWidth)
+    }
+
     private static func write(to url: URL, seconds: Int) async throws {
-        let width = 320
-        let height = 180
-        let framesPerSecond: Int32 = 30
+        let framesPerSecond = Int32(Self.framesPerSecond)
         let sampleRate = 44_100
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -265,13 +274,12 @@ enum TestMovie {
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        let barWidth = 24
-        let barStart = (frame * 4) % (width - barWidth)
+        let start = Self.barStart(frame: frame)
         for y in 0..<height {
             // BGRA, little-endian: 0xAARRGGBB.
             let row = base.advanced(by: y * bytesPerRow)
             row.initializeMemory(as: UInt32.self, repeating: 0xFF20_3060, count: width)
-            row.advanced(by: barStart * 4).initializeMemory(as: UInt32.self, repeating: 0xFFFF_FFFF, count: barWidth)
+            row.advanced(by: start * 4).initializeMemory(as: UInt32.self, repeating: 0xFFFF_FFFF, count: barWidth)
         }
     }
 

@@ -27,6 +27,11 @@ public final class FrameGrabber: VideoFrameSource, @unchecked Sendable {
         return await vlcFrame(url, at: time, maxPixelSize: size, precise: precise)
     }
 
+    /// VLC's frame, even for files AVFoundation could open (for tests).
+    func vlcFrameJPEG(from url: URL, at time: TimeInterval?, maxPixelSize: Int, precise: Bool) async -> Data? {
+        await vlcFrame(url, at: time, maxPixelSize: max(64, maxPixelSize), precise: precise)
+    }
+
     // MARK: - AVFoundation
 
     private static func avFrame(_ url: URL, at time: TimeInterval?, maxPixelSize: Int, precise: Bool) async -> Data? {
@@ -97,6 +102,10 @@ private final class ThumbnailRequest: NSObject, VLCMediaThumbnailerDelegate, @un
             thumbnailer.thumbnailHeight = CGFloat(size)
             thumbnailer.cropsToFit = false
             thumbnailer.preciseSeek = precise
+            // An exact frame decodes everything from the keyframe before it:
+            // fast with VideoToolbox, seconds in software for 4K. libVLC
+            // falls back to software by itself when it has to.
+            thumbnailer.hardwareDecodingEnabled = true
             if let time, time.isFinite, time >= 0 {
                 thumbnailer.snapshotTime = VLCTime(int: Int32(clamping: Int((time * 1_000).rounded())))
             } else {

@@ -8,14 +8,19 @@ import PlaybackCore
 
 /// YouTube-style frame previews above the scrubber.
 ///
-/// Once a local video has been playing for a couple of seconds, frames are
-/// made in the background, coarse to fine (see `ScrubPreviewPlan`), so a
-/// nearby frame is ready almost at once and the strip fills in while the
-/// video plays. Frames the user scrubs to are made next. AVFoundation makes
-/// frames for the formats Apple opens; VLC's thumbnailer for the rest.
+/// Two kinds of frame:
+/// - **A strip** for moving quickly: once a local video has been playing for
+///   a couple of seconds, up to 200 frames are made in the background, coarse
+///   to fine (see `ScrubPreviewPlan`), so a nearby frame is ready almost at
+///   once. They're up to half a slot (and a second) from the time asked for.
+///   Finished strips are kept in the Caches folder, so a video watched again
+///   previews instantly.
+/// - **Exact frames** for where the pointer or thumb rests: after a short
+///   pause, the frame at exactly that time is made (decoded from the
+///   keyframe before it), so the preview shows what playback lands on.
 ///
-/// Finished strips are kept in the Caches folder, so a video watched again
-/// previews instantly.
+/// AVFoundation makes frames for the formats Apple opens; VLC's thumbnailer
+/// for the rest.
 @MainActor
 @Observable
 public final class ScrubPreviews {
@@ -34,9 +39,23 @@ public final class ScrubPreviews {
     @ObservationIgnored private var decodedOrder: [Int] = []
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var itemID: UUID?
+    /// The current video, for exact frames.
+    @ObservationIgnored private var itemURL: URL?
+    /// Exact frames by time in tenths of a second, most recent last.
+    @ObservationIgnored private var exactFrames: [Int: CGImage] = [:]
+    @ObservationIgnored private var exactOrder: [Int] = []
+    /// The time (in tenths) whose exact frame is waiting or being made.
+    @ObservationIgnored private var exactPending: Int?
+    @ObservationIgnored private var exactTask: Task<Void, Never>?
 
     /// Frames are this many pixels on their long side.
     nonisolated static let frameSize = 360
+    /// Exact frames are shown alone, so a little sharper.
+    nonisolated static let exactFrameSize = 480
+    /// How long the position has to stay put before an exact frame is made.
+    nonisolated static let exactFrameDelay: Duration = .milliseconds(120)
+    /// Exact frames kept in memory.
+    nonisolated static let exactFrameLimit = 32
     /// Frames made per AVFoundation batch, between checks for frames the user is waiting for.
     nonisolated static let batchSize = 6
 
@@ -59,6 +78,50 @@ public final class ScrubPreviews {
         return decodedImage(index)
     }
 
+    /// The frame at exactly `time`, once it's been made. Otherwise asks for
+    /// it (made once the position stays put for a moment) and returns `nil`;
+    /// `revision` changes when it arrives.
+    public func exactImage(at time: TimeInterval) -> CGImage? {
+        guard let url = itemURL, time.isFinite else { return nil }
+        let key = Int((max(time, 0) * 10).rounded())
+        if let image = exactFrames[key] {
+            return image
+        }
+        guard key != exactPending else { return nil }
+        exactPending = key
+        exactTask?.cancel()
+        exactTask = Task { [weak self] in
+            // Only once the pointer or thumb rests: dragging past doesn't count.
+            try? await Task.sleep(for: Self.exactFrameDelay)
+            guard !Task.isCancelled else { return }
+            let data = await FrameGrabber.shared.frameJPEG(
+                from: url,
+                at: Double(key) / 10,
+                maxPixelSize: Self.exactFrameSize,
+                precise: true
+            )
+            // Kept even if the pointer moved on: it may come back.
+            self?.storeExactFrame(data, key: key, url: url)
+        }
+        return nil
+    }
+
+    private func storeExactFrame(_ data: Data?, key: Int, url: URL) {
+        if exactPending == key {
+            exactPending = nil
+        }
+        guard url == itemURL, let data,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+        exactFrames[key] = image
+        exactOrder.removeAll { $0 == key }
+        exactOrder.append(key)
+        if exactOrder.count > Self.exactFrameLimit {
+            exactFrames[exactOrder.removeFirst()] = nil
+        }
+        revision += 1
+    }
+
     /// `true` once every frame has been made (or tried).
     public var isComplete: Bool {
         guard let plan else { return false }
@@ -73,6 +136,7 @@ public final class ScrubPreviews {
         guard hasVideo, item.url.isFileURL, let duration, duration >= 10 else { return }
         reset()
         itemID = item.id
+        itemURL = item.url
         let plan = ScrubPreviewPlan(duration: duration)
         self.plan = plan
         remaining = plan.generationOrder
@@ -89,7 +153,13 @@ public final class ScrubPreviews {
     func reset() {
         task?.cancel()
         task = nil
+        exactTask?.cancel()
+        exactTask = nil
         itemID = nil
+        itemURL = nil
+        exactFrames = [:]
+        exactOrder = []
+        exactPending = nil
         plan = nil
         frames = [:]
         failed = []
@@ -123,7 +193,11 @@ public final class ScrubPreviews {
             let requests = batch.map { (index: $0, time: plan.time(of: $0)) }
             let results: [(index: Int, data: Data?)]
             if usesAVFoundation {
-                results = await Self.avFrames(url: url, requests: requests, tolerance: plan.interval / 2)
+                // Close to the slot's time, but not exact (that costs a decode
+                // from the keyframe before it): within a second, or less for
+                // short videos.
+                let tolerance = min(max(plan.interval / 4, 0.25), 1)
+                results = await Self.avFrames(url: url, requests: requests, tolerance: tolerance)
             } else {
                 var vlcResults: [(index: Int, data: Data?)] = []
                 for request in requests {
@@ -192,15 +266,14 @@ public final class ScrubPreviews {
         return image
     }
 
-    /// One AVFoundation generator for a batch of frames. Keyframe-near
-    /// frames (within half a slot) are much faster than exact ones and
-    /// plenty for previews.
+    /// One AVFoundation generator for a batch of frames, each within
+    /// `tolerance` of its slot: much faster than exact ones.
     private nonisolated static func avFrames(url: URL, requests: [(index: Int, time: TimeInterval)], tolerance: TimeInterval) async -> [(index: Int, data: Data?)] {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: frameSize, height: frameSize)
-        let slack = CMTime(seconds: max(tolerance, 0.5), preferredTimescale: 600)
+        let slack = CMTime(seconds: tolerance, preferredTimescale: 600)
         generator.requestedTimeToleranceBefore = slack
         generator.requestedTimeToleranceAfter = slack
         var results: [(index: Int, data: Data?)] = []

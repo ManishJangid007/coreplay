@@ -165,6 +165,15 @@ These come on top of the plan; nothing in the plan was dropped for them.
   - if anything locks up, a watchdog samples every thread into `build/hang-<test>.txt` and ends the run, so the build script can't hang;
   - all 184 tests pass.
 
+**Fixed after this report: scrub previews showed a nearby frame, not the one playback lands on** (you found it)
+- **The cause:** the preview showed the nearest frame of the background strip. Strip frames are up to half a slot apart (18 seconds in a two-hour film), and each was only near its slot's time (the closest keyframe), so the frame you saw could be well away from where a click took you.
+- **The fix:**
+  - once the pointer or thumb rests for 0.12 seconds, the frame at exactly that time is made (decoded from the keyframe before it) and replaces the strip's frame;
+  - the 32 most recent exact frames are kept, so going back to a spot is instant;
+  - VLC makes its frames with hardware decoding, so exact frames from 4K files take a fraction of a second rather than several;
+  - strip frames now sit within a second of their slot's time (they could be half a slot off).
+- **Tests** read the frame's time back from the test movie's moving bar: AVFoundation, VLC and the resting-pointer preview all land within one frame of the time asked for. All 187 tests pass.
+
 ### Stubbed or deferred
 - **Milestone 6 (VLC parity):**
   - subtitle style beyond size (font, colour, outline, background, position, text encoding, two tracks at once);
