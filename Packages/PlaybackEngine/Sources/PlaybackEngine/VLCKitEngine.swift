@@ -372,6 +372,8 @@ final class VLCKitEngine: PlaybackEngine {
     private func makeFallbackDrawable() -> PlatformView {
         if let fallbackDrawable { return fallbackDrawable }
         let view = PlatformView(frame: CGRect(x: 0, y: 0, width: 16, height: 16))
+        // Kept in a window, so VLC's OpenGL output has a framebuffer (see `VideoParking`).
+        VideoParking.park(view)
         fallbackDrawable = view
         return view
     }

@@ -37,13 +37,16 @@ extension PlaybackController {
     }
 
     /// Takes the video view back when `container` goes away and returns it to
-    /// the previous surface, if one is still on screen.
+    /// the previous surface, if one is still on screen (otherwise it waits in
+    /// `VideoParking`, still in a window).
     func unmountVideoView(from container: PlatformView) {
         videoContainers.removeAll { $0.view == nil || $0.view === container }
         guard videoView.superview === container else { return }
         videoView.removeFromSuperview()
         if let previous = videoContainers.last?.view {
             place(videoView, in: previous)
+        } else {
+            VideoParking.park(videoView)
         }
     }
 
@@ -71,6 +74,11 @@ extension PlaybackController {
     func layoutVideoView(in container: PlatformView) {
         guard videoView.superview === container, let layer = Self.layer(of: container) else { return }
         let bounds = container.bounds
+        // SwiftUI often lays a new container out at zero size first. Shrinking
+        // VLC's view to nothing would hand its OpenGL output an empty
+        // framebuffer (an assertion failure in VLCKit), so the last real size
+        // stays until the container has one.
+        guard bounds.width >= 2, bounds.height >= 2 else { return }
         #if canImport(AppKit) && !canImport(UIKit)
         let yUp = !container.isFlipped
         #else
@@ -113,6 +121,53 @@ extension PlaybackController {
         return view.layer
         #endif
     }
+}
+
+/// Where a video view waits while no player shows it. VLC's macOS video
+/// output draws with OpenGL into the view it's given, and a view outside any
+/// window has no framebuffer: VLCKit then fails an assertion
+/// (GL_INVALID_FRAMEBUFFER_OPERATION in vout_display_opengl_Prepare) and the
+/// app ends. That happened when a video started before the player had
+/// slid in, or kept drawing after its view left the screen. So a video view
+/// is always in a window: a player's, or this invisible one.
+@MainActor
+enum VideoParking {
+    #if canImport(AppKit) && !canImport(UIKit)
+    private static var window: NSWindow?
+
+    static func park(_ view: PlatformView) {
+        let window = window ?? makeWindow()
+        view.removeFromSuperview()
+        view.autoresizingMask = []
+        if view.frame.width < 2 || view.frame.height < 2 {
+            view.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
+        }
+        window.contentView?.addSubview(view)
+    }
+
+    private static func makeWindow() -> NSWindow {
+        _ = NSApplication.shared
+        let window = NSWindow(
+            contentRect: NSRect(x: -20_000, y: -20_000, width: 320, height: 180),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.ignoresMouseEvents = true
+        window.alphaValue = 0
+        window.hasShadow = false
+        window.isExcludedFromWindowsMenu = true
+        window.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary, .fullScreenAuxiliary]
+        window.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        window.orderFrontRegardless()
+        self.window = window
+        return window
+    }
+    #else
+    /// iOS: VLC's output there copes with a view outside a window.
+    static func park(_ view: PlatformView) {}
+    #endif
 }
 
 /// Holds the video view and lays it out whenever its size changes.

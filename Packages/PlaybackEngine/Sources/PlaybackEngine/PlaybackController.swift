@@ -265,9 +265,15 @@ public final class PlaybackController {
         self.configuration = configuration
         self.router = EngineRouter(alwaysUseVLC: configuration.alwaysUseVLC)
         self.factory = EngineFactory(configuration: configuration)
-        let host = VideoHostView(frame: .zero)
+        // Never zero-sized: VLC's macOS video output builds its OpenGL
+        // framebuffers at the view's size, and a 0×0 framebuffer fails the
+        // assertion in vlc_gl_filter_ApplyOutputSize (GL_INVALID_FRAMEBUFFER_OPERATION),
+        // which ends the app. The player lays it out properly once it's shown.
+        let host = VideoHostView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
         self.videoHost = host
         self.videoView = host
+        // In a window from the start (see `VideoParking`).
+        VideoParking.park(host)
         if purpose == .main {
             connectPictureInPicture()
             CastingCenter.shared.onTargetChange = { [weak self] _ in
