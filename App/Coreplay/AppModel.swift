@@ -25,6 +25,10 @@ final class AppModel {
     let settings: AppSettings
     let session: PlaybackSession
     let library: LibraryManager
+    /// The running app's model, for Shortcuts (App Intents run in the app).
+    static weak var shared: AppModel?
+    /// Play counts, progress and playlists through iCloud.
+    @ObservationIgnored private var cloudSync: LibraryCloudSync?
 
     /// iOS: the Files picker, for files to play or a folder to add.
     var isFileImporterPresented = false
@@ -75,7 +79,69 @@ final class AppModel {
         NetworkLoginPrompt.shared.onRemember = { url, credential in
             NetworkKeychain.save(credential, for: url)
         }
+        // Lyrics for Now Playing: the song's tags, an .lrc file, or LRCLIB.
+        session.lyricsLookup = { item in
+            if let id = item.libraryID, let track = library.track(libraryID: id) {
+                return await library.lyrics(for: track)
+            }
+            return await library.lyrics(besideFileAt: item.url)
+        }
         connectPictureInPicture()
+        Self.shared = self
+        let sync = LibraryCloudSync(library: library)
+        sync.start()
+        cloudSync = sync
+        CoreplayShortcuts.updateAppShortcutParameters()
+    }
+
+    // MARK: Handoff
+
+    static let playbackActivityType = "com.coreplay.playback"
+
+    /// What's playing, for Handoff to another device signed in to the same
+    /// account: a library file by its content key, or a stream or share by address.
+    func describePlayback(_ activity: NSUserActivity) {
+        let controller = session.controller
+        guard let item = controller.currentItem, !item.isPreview else {
+            activity.isEligibleForHandoff = false
+            return
+        }
+        var info: [String: Any] = ["position": controller.currentTime]
+        if let id = item.libraryID, let key = library.contentKey(libraryID: id), !key.isEmpty {
+            info["contentKey"] = key
+        } else if !item.url.isFileURL, item.url.password == nil {
+            info["url"] = NetworkAddress.withoutLogin(item.url).absoluteString
+        } else {
+            activity.isEligibleForHandoff = false
+            return
+        }
+        activity.title = controller.displayTitle
+        activity.userInfo = info
+        activity.isEligibleForHandoff = true
+    }
+
+    /// Carries on what another device was playing, from the same place.
+    func continuePlayback(_ activity: NSUserActivity) {
+        let info = activity.userInfo ?? [:]
+        let position = info["position"] as? Double
+        var item: PlaybackItem?
+        if let key = info["contentKey"] as? String {
+            item = library.playbackItem(contentKey: key)
+        } else if let address = info["url"] as? String, let url = URL(string: address) {
+            item = PlaybackItem(url: url)
+        }
+        guard var item else {
+            openErrorMessage = "\u{201C}\(activity.title ?? "That")\u{201D} isn\u{2019}t in this device\u{2019}s library."
+            return
+        }
+        if let position, position > 5 {
+            item.startPosition = position
+        }
+        let isVideo = item.kind != .audio
+        Task {
+            await session.play([item])
+        }
+        presentPlayer(expectingVideo: isVideo)
     }
 
     // MARK: Picture in Picture

@@ -114,6 +114,12 @@ struct MacRootView: View {
                 model.openStream(url)
             }
         }
+        .userActivity(AppModel.playbackActivityType, isActive: model.session.hasItem) { activity in
+            model.describePlayback(activity)
+        }
+        .onContinueUserActivity(AppModel.playbackActivityType) { activity in
+            model.continuePlayback(activity)
+        }
         // Logins VLC asks for, over the library and the player alike.
         .networkPrompts()
         .environment(\.appActions, actions)

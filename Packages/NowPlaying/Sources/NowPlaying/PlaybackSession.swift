@@ -39,6 +39,9 @@ public final class PlaybackSession {
     /// Describes what's playing for a subtitle search: the app fills in the
     /// library's title, IMDb IDs and episode numbers.
     @ObservationIgnored public var subtitleSearchRequest: (@MainActor (PlaybackItem) -> SubtitleSearchRequest)?
+    /// Finds a song's lyrics (the app reads tags, `.lrc` files and, if
+    /// allowed, LRCLIB). `nil` shows "No Lyrics".
+    @ObservationIgnored public var lyricsLookup: (@MainActor (PlaybackItem) async -> Lyrics?)?
 
     /// What you chose for each video (tracks, timing, picture), most recent kept.
     @ObservationIgnored private var fileOptions = FileOptionsStore()
@@ -223,6 +226,61 @@ public final class PlaybackSession {
 
     public func moveUpNext(fromOffsets source: IndexSet, toOffset destination: Int) {
         queue.moveUpNext(fromOffsets: source, toOffset: destination)
+    }
+
+    public func clearUpNext() {
+        queue.clearUpNext()
+        updateRemoteCommands()
+    }
+
+    // MARK: - Sleep timer
+
+    public enum SleepTimer: Hashable, Sendable {
+        case minutes(Int)
+        /// Stops when the song or video playing now ends.
+        case endOfItem
+    }
+
+    /// The sleep timer that's set, if any.
+    public private(set) var sleepTimer: SleepTimer?
+    /// When a minutes timer stops playback.
+    public private(set) var sleepDeadline: Date?
+    @ObservationIgnored private var sleepTask: Task<Void, Never>?
+
+    /// Sets (or with `nil` cancels) the sleep timer. A minutes timer fades
+    /// the sound out over its last ten seconds, then pauses.
+    public func setSleepTimer(_ timer: SleepTimer?) {
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepTimer = timer
+        sleepDeadline = nil
+        guard case .minutes(let minutes) = timer else { return }
+        let deadline = Date.now.addingTimeInterval(TimeInterval(minutes * 60))
+        sleepDeadline = deadline
+        sleepTask = Task { [weak self] in
+            let fade: TimeInterval = 10
+            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - fade)))
+            guard !Task.isCancelled else { return }
+            await self?.fadeOutAndSleep(over: fade)
+        }
+    }
+
+    private func fadeOutAndSleep(over seconds: TimeInterval) async {
+        let volume = controller.volume
+        let steps = 20
+        for step in 1...steps {
+            guard !Task.isCancelled else {
+                controller.setVolume(volume)
+                return
+            }
+            controller.setVolume(volume * Float(steps - step) / Float(steps))
+            try? await Task.sleep(for: .seconds(seconds / Double(steps)))
+        }
+        pause()
+        controller.setVolume(volume)
+        sleepTimer = nil
+        sleepDeadline = nil
+        sleepTask = nil
     }
 
     // MARK: - Remembered preferences
@@ -431,6 +489,13 @@ public final class PlaybackSession {
     }
 
     private func advanceAfterEnd() async {
+        if sleepTimer == .endOfItem {
+            // The sleep timer was set to the end of this item.
+            setSleepTimer(nil)
+            wantsPlayback = false
+            publishPlayback()
+            return
+        }
         if controller.hasVideo, queue.hasNext, !PlaybackPreferences.autoplaysNextEpisode {
             // Autoplay is off: stay on the last frame, where the player
             // offers the next episode.

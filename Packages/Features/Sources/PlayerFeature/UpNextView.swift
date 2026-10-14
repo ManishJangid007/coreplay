@@ -47,6 +47,13 @@ public struct UpNextView: View {
                     HStack {
                         Text("Up Next")
                         Spacer()
+                        if !session.upNext.isEmpty {
+                            Button("Clear") {
+                                session.clearUpNext()
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.subheadline.weight(.semibold))
+                        }
                         Button {
                             session.toggleShuffle()
                         } label: {

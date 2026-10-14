@@ -299,6 +299,7 @@ public struct VideoPlayerView: View {
             Spacer(minLength: 12)
 
             GlassControlGroup {
+                SleepTimerMenu()
                 CastButton()
                 AirPlayButton(prioritizesVideoDevices: true)
                 #if os(macOS)

@@ -41,6 +41,9 @@ struct PhoneRootView: View {
                         .init("Playlists", systemImage: "music.note.list") {
                             LibrarySectionView(section: .playlists)
                         },
+                        .init("Composers", systemImage: "music.quarternote.3") {
+                            LibrarySectionView(section: .composers)
+                        },
                     ])
                     .libraryDestinations()
                 }
@@ -140,6 +143,12 @@ struct PhoneRootView: View {
         }
         .task {
             model.startLibrary()
+        }
+        .userActivity(AppModel.playbackActivityType, isActive: model.session.hasItem) { activity in
+            model.describePlayback(activity)
+        }
+        .onContinueUserActivity(AppModel.playbackActivityType) { activity in
+            model.continuePlayback(activity)
         }
         .networkPrompts()
         .environment(\.appActions, actions)

@@ -9,7 +9,7 @@
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
 | 6 | VLC parity: feature checklist against the sample suite | Done (checked on the Mac); DVD and Blu-ray wait for a VLCKit built with disc support |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | Done (checked on the Mac); indexing shares into the library waits for your go-ahead (a data model change) |
-| 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
+| 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | Done (checked on the Mac); iCloud sync needs one capability switched on in Xcode |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
 
 ## Your additions (October 13)
@@ -29,6 +29,43 @@ These come on top of the plan; nothing in the plan was dropped for them.
 | A hero carousel like the TV app and Netflix: full artwork for movies and shows, and a short clip playing for movies | Added during Milestone 6 | Done: Home, Movies and TV Shows (see below) |
 | A series page with the episodes, the one last played, and a seamless way to carry on | Added during Milestone 6 | Done: show page redesign and Up Next at the end credits (see below) |
 | Music lists that look like charts, not plain lists | Added during Milestone 6 | Done: chart rows, Top Songs, genre tiles and artist portraits (see below) |
+
+---
+
+## Milestone 8: Extras — October 14, 2026
+
+### What was built
+
+- **Playlists:** New Playlist, Add to Playlist in every song's menu, reorder and remove (as in Up Next), rename and delete. Playlists show as tiles with a mosaic of their covers, and a playlist page in the same chart style as the music lists.
+- **Smart playlists:** rules on title, artist, album, genre, year, plays, length, date added and last played; all or any of them; a limit and an order (most played, recently added, random…). Recently Added, Most Played and Never Played are there to start from.
+- **Imported playlists:** M3U, PLS and XSPF files become playlists of the library songs they list; songs that aren't in the library are counted.
+- **Composers** in the Music sidebar (and the Music tab on iPhone).
+- **Lyrics:** a Lyrics button in Now Playing. Synced lyrics follow the song with the current line bright, and a tap on a line jumps there. They come from the song's tags, an `.lrc` file beside it, or LRCLIB when Look Up Lyrics is on (Settings ▸ Metadata; off at first).
+- **Sleep timer:** the moon in Now Playing and the video player: 15, 30, 45, 60 or 90 minutes (the sound fades out over the last ten seconds), or the end of the song or video.
+- **Queue:** Clear in Up Next (reordering, removing, history, Play Next and Play Later were already there).
+- **Equalizer:** already in place since Milestone 5 (presets and ten bands, in Options ▸ Sound).
+- **iCloud sync:** play counts, where videos got to, watched state, favourites and playlists, by content fingerprint, so the same file on the iPhone and the Mac shares its history. Each device keeps scanning its own files.
+- **Shortcuts and Siri:** Play Playlist, Shuffle My Music, Play or Pause, Next, Previous and Open Network Stream, with phrases such as “Play Road Trip in Coreplay”.
+- **Handoff:** what's playing appears on your other devices and carries on from the same place.
+- **Widget:** Coreplay Controls (small and medium) with previous, play/pause, next and Shuffle, on the Home Screen and the Mac's desktop.
+
+### How it was checked
+
+- **Builds:** macOS and the iOS Simulator, with the new widget extension embedded in both.
+- **Tests on the Mac:** 340 package tests pass. New ones: playlist order, moves and removals with a song only on another device; smart playlists from rules and play counts; iCloud sync between two libraries through a stand-in store (counts, progress, playlists, then a deletion travelling back); an old library upgrading to version 3 with its videos and a new playlist.
+- **Tests on Linux:** LRC reading (offsets, several stamps a line, plain text), the line playing at a time, smart playlist rules, ordering and limits, LRCLIB requests and replies, and Clear Up Next.
+- **Not yet checked by hand:** Siri phrases, Handoff and the widget on devices, and iCloud sync (it needs the capability below).
+
+### Stubbed or deferred
+
+- **iCloud sync needs one switch:** Signing & Capabilities ▸ + Capability ▸ iCloud ▸ Key-value storage on the Coreplay target. I didn't turn it on, because it needs your developer team and would stop the app building if the team can't use iCloud. Until it's on, nothing syncs and nothing else changes.
+- **The widget shows controls, not what's playing:** showing the song would need an App Group shared between the app and the widget, which (like iCloud) depends on your team's capabilities.
+- **Settings and the watchlist aren't synced** (the watchlist names movies by this device's library IDs).
+
+### Where this deviates from the build prompt, and why
+
+1. **iCloud key-value storage instead of CloudKit.** It syncs what you did (counts, progress, playlists) by content fingerprint, which works across devices that each scan their own files. Syncing the library database itself through CloudKit would duplicate every song a device scans and can't express “the same file on another device”.
+2. **Library metadata edits (Edit Info, Fix Match) stay on the device** that made them, for the same reason.
 
 ---
 

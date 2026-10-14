@@ -20,7 +20,32 @@
 		F7275DDEF6D053ECA560B4DC /* MusicFeature in Frameworks */ = {isa = PBXBuildFile; productRef = CF6DF0CF8040FA0C309CA247 /* MusicFeature */; };
 		2B9B824B60F57E50E1007098 /* VideoFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 41E80B58D9C1011ADDCE2C91 /* VideoFeature */; };
 		D4C5790DA02CDE0AC4E2804D /* Networking in Frameworks */ = {isa = PBXBuildFile; productRef = 4BB8D3388C658E5026A320DD /* Networking */; };
+		9DAA64D75F655771F005C0EA /* CoreplayWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C7A0466F07A03C2DF883A500 /* CoreplayWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		EB6C50B2C59EB891705A6C63 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7AD30BD0F5CD8B5679B50A2A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C06294BECDC5C1B36FC7686D;
+			remoteInfo = CoreplayWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9E2CFCC475FEACE186FF8519 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9DAA64D75F655771F005C0EA /* CoreplayWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1012C39740C4F006465C8BE1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -34,6 +59,9 @@
 		B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Coreplay.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBEF4412B6B9F9A4CE98C62D /* DesignSystem */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DesignSystem; sourceTree = "<group>"; };
 		E3C320FA32A299355063E560 /* PlaybackEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = PlaybackEngine; sourceTree = "<group>"; };
+		C7A0466F07A03C2DF883A500 /* CoreplayWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CoreplayWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3BC0AA203620EEE44DE9B8C6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		6F3593F67641EF79EB579551 /* CoreplayWidgets-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "CoreplayWidgets-macOS.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -45,6 +73,11 @@
 		DF5975B9D634CB5B4BF688F2 /* Platform */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Platform;
+			sourceTree = "<group>";
+		};
+		29956F3A6CD58827A93B3F27 /* Sources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Sources;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -67,6 +100,13 @@
 				2B9B824B60F57E50E1007098 /* VideoFeature in Frameworks */,
 				FB78ADE97C290BEE7DAD27D2 /* MediaLibrary in Frameworks */,
 				D4C5790DA02CDE0AC4E2804D /* Networking in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DC5B5C361C1053C391EFD286 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +137,7 @@
 				A24A7BF0773424745C04AD39 /* App */,
 				393E19BC3BE9F1080375E942 /* Config */,
 				E6F021E9F05AEEA32B17BFA2 /* Packages */,
+				7FFCA42EDABF63861252BBB0 /* Widgets */,
 				E4C805FC033343202B0A9F0C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -105,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */,
+				C7A0466F07A03C2DF883A500 /* CoreplayWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -132,6 +174,16 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
+		7FFCA42EDABF63861252BBB0 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				29956F3A6CD58827A93B3F27 /* Sources */,
+				3BC0AA203620EEE44DE9B8C6 /* Info.plist */,
+				6F3593F67641EF79EB579551 /* CoreplayWidgets-macOS.entitlements */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -142,10 +194,12 @@
 				BCB366DE5F59172A84ED3DD3 /* Sources */,
 				113651926E3EE83F33D308A9 /* Frameworks */,
 				7419875CE608E1759D819CBD /* Resources */,
+				9E2CFCC475FEACE186FF8519 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				71E7E1E9827C961DD69007D6 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B026F8E67F908D7B229825FB /* Coreplay */,
@@ -171,6 +225,26 @@
 			productReference = B09D47EBAA38D5BEFBA94BD6 /* Coreplay.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C06294BECDC5C1B36FC7686D /* CoreplayWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4CFE9286282DA862B9DB9831 /* Build configuration list for PBXNativeTarget "CoreplayWidgets" */;
+			buildPhases = (
+				D93B1304428DF513F9B1DD2A /* Sources */,
+				DC5B5C361C1053C391EFD286 /* Frameworks */,
+				A74691790EC9F6625AF1C0F3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				29956F3A6CD58827A93B3F27 /* Sources */,
+			);
+			name = CoreplayWidgets;
+			productName = CoreplayWidgets;
+			productReference = C7A0466F07A03C2DF883A500 /* CoreplayWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -182,6 +256,9 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					84C713DDCE90A04FDF7058D9 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					C06294BECDC5C1B36FC7686D = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
@@ -201,12 +278,20 @@
 			projectRoot = "";
 			targets = (
 				84C713DDCE90A04FDF7058D9 /* Coreplay */,
+				C06294BECDC5C1B36FC7686D /* CoreplayWidgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		7419875CE608E1759D819CBD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A74691790EC9F6625AF1C0F3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -223,7 +308,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D93B1304428DF513F9B1DD2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		71E7E1E9827C961DD69007D6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C06294BECDC5C1B36FC7686D /* CoreplayWidgets */;
+			targetProxy = EB6C50B2C59EB891705A6C63 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		00E577803A15052ACE342E19 /* Release */ = {
@@ -441,6 +541,74 @@
 			};
 			name = Debug;
 		};
+		4E57A7DC3AC9057757A1C43E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Widgets/CoreplayWidgets-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5JWWA6VR55;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay.Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8994F6E0B2DFBABFEE86A845 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Widgets/CoreplayWidgets-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5JWWA6VR55;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Coreplay;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Coreplay.Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -458,6 +626,15 @@
 			buildConfigurations = (
 				649A6C0A45CBF802B5C9E91F /* Debug */,
 				3AF89A98F7D6B0C67EF222A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4CFE9286282DA862B9DB9831 /* Build configuration list for PBXNativeTarget "CoreplayWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E57A7DC3AC9057757A1C43E /* Debug */,
+				8994F6E0B2DFBABFEE86A845 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

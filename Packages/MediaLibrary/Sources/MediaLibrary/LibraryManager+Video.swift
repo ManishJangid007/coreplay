@@ -109,6 +109,7 @@ extension LibraryManager {
         record.lastPlayedDate = .now
         save()
         updateWatchState(record)
+        onUserStateChange?()
         // Home's rows change when something starts, finishes or stops being in progress.
         if wasInProgress != (record.position != nil && !record.isWatched) || wasWatched != record.isWatched {
             bumpRevision()
@@ -130,6 +131,7 @@ extension LibraryManager {
         }
         save()
         bumpRevision()
+        onUserStateChange?()
     }
 
     public func markUnwatched(_ videos: [Video]) {
@@ -142,6 +144,7 @@ extension LibraryManager {
         }
         save()
         bumpRevision()
+        onUserStateChange?()
     }
 
     private func updateWatchState(_ record: PlaybackRecord) {

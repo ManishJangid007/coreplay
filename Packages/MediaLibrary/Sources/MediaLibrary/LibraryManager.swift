@@ -73,6 +73,10 @@ public final class LibraryManager {
     public internal(set) var watchlist: [String] = []
     /// Grabs frames for video artwork; set by the app (it lives in PlaybackEngine).
     @ObservationIgnored public var frameSource: (any VideoFrameSource)?
+    /// Find lyrics online (LRCLIB) for songs without any. Off unless turned on in Settings.
+    public internal(set) var looksUpLyrics = false
+    /// Playlists deleted on this device, so iCloud sync doesn't bring them back.
+    @ObservationIgnored public internal(set) var deletedPlaylistIDs: [UUID: Date] = [:]
 
     @ObservationIgnored private var indexerTask: Task<LibraryIndexer, Never>?
     @ObservationIgnored var roots: [UUID: URL] = [:]
@@ -111,11 +115,16 @@ public final class LibraryManager {
             hasMetadataKey = metadataKey != nil
             usesFreeMetadataSources = UserDefaults.standard.object(forKey: Self.freeSourcesKey) as? Bool ?? true
             watchlist = UserDefaults.standard.stringArray(forKey: Self.watchlistKey) ?? []
+            looksUpLyrics = UserDefaults.standard.bool(forKey: Self.lyricsLookupKey)
         }
         persistsWatchlist = !inMemory
     }
 
     public var context: ModelContext { container.mainContext }
+
+    /// Called after play counts, progress, watched state or playlists
+    /// change, so iCloud sync can send them (`LibraryCloudSync`).
+    @ObservationIgnored public var onUserStateChange: (@MainActor () -> Void)?
 
     func bumpRevision() {
         revision += 1
@@ -308,6 +317,7 @@ public final class LibraryManager {
         record.lastPlayedDate = .now
         save()
         revision += 1
+        onUserStateChange?()
     }
 
     /// Stores a duration the player learned for a file the scanner couldn't time.

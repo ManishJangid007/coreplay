@@ -42,20 +42,8 @@ public enum LibrarySection: String, Hashable, CaseIterable, Identifiable, Sendab
         }
     }
 
-    /// Composers join these with playlists in Milestone 8.
-    public static let music: [LibrarySection] = [.artists, .albums, .songs, .genres, .playlists]
+    public static let music: [LibrarySection] = [.artists, .albums, .songs, .genres, .composers, .playlists]
     public static let videos: [LibrarySection] = [.movies, .tvShows, .homeVideos]
-
-    fileprivate var comingSoonMessage: String {
-        switch self {
-        case .playlists:
-            "Playlists you make, smart playlists and imported M3U or XSPF files will appear here."
-        case .composers:
-            "Composers from your files\u{2019} tags will appear here."
-        default:
-            ""
-        }
-    }
 }
 
 /// A single library section.
@@ -84,13 +72,10 @@ public struct LibrarySectionView: View {
             HomeVideosView()
         case .sources:
             SourcesView()
-        case .composers, .playlists:
-            EmptyStateView(
-                "Coming Soon",
-                systemImage: section.systemImage,
-                message: section.comingSoonMessage
-            )
-            .navigationTitle(section.title)
+        case .playlists:
+            PlaylistsView()
+        case .composers:
+            ComposersView()
         }
     }
 }

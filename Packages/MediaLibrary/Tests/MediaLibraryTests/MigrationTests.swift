@@ -84,14 +84,17 @@ extension LibraryTests {
                 file.video = video
                 try context.save()
             }
-            // Reopening finds everything, at version 2.
+            // Reopening finds everything, at the current version, with playlists.
             let reopened = try LibraryStore.makeContainer(url: store)
             let context = ModelContext(reopened)
             let video = try #require(try context.fetch(FetchDescriptor<Video>()).first)
             #expect(video.title == "Heat")
             #expect(video.file?.fileName == "Heat.1995.1080p.BluRay.mkv")
+            context.insert(Playlist(name: "Kept"))
+            try context.save()
+            #expect(try context.fetch(FetchDescriptor<Playlist>()).map(\.name) == ["Kept"])
             let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: store)
-            #expect((metadata["NSStoreModelVersionIdentifiers"] as? [String]) == ["2.0.0"])
+            #expect((metadata["NSStoreModelVersionIdentifiers"] as? [String]) == ["3.0.0"])
         }
     }
 }

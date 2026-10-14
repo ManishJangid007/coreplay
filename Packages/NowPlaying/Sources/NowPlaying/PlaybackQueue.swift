@@ -91,6 +91,17 @@ public struct PlaybackQueue: Hashable, Sendable {
         currentIndex = nil
     }
 
+    /// Removes everything after the current item.
+    public mutating func clearUpNext() {
+        guard let currentIndex else {
+            clear()
+            return
+        }
+        items = Array(items[...currentIndex])
+        let kept = Set(items.map(\.id))
+        originalOrder.removeAll { !kept.contains($0) }
+    }
+
     // MARK: Adding
 
     /// Inserts items right after the current one ("Play Next").

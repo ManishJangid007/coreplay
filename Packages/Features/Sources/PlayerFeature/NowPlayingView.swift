@@ -14,6 +14,7 @@ public struct NowPlayingView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsQueue = false
+    @State private var showsLyrics = false
     @State private var showsOptions = false
     #if os(macOS)
     @FocusState private var hasKeyboardFocus: Bool
@@ -191,7 +192,17 @@ public struct NowPlayingView: View {
 
     // MARK: Pieces
 
+    @ViewBuilder
     private func artwork(side: CGFloat) -> some View {
+        if showsLyrics {
+            LyricsView()
+                .frame(width: max(side, 0), height: max(side, 0))
+        } else {
+            coverArt(side: side)
+        }
+    }
+
+    private func coverArt(side: CGFloat) -> some View {
         ArtworkView(
             data: controller.metadata.artworkData,
             shape: .square,
@@ -209,6 +220,7 @@ public struct NowPlayingView: View {
         HStack {
             GlassIconButton("Close Now Playing", systemImage: "chevron.down", help: "Back to Library (Esc)", action: onClose)
             Spacer()
+            SleepTimerMenu()
             GlassIconButton("Playback Options", systemImage: "ellipsis", help: "Speed, Equalizer and More") {
                 showsOptions = true
             }
@@ -297,6 +309,10 @@ public struct NowPlayingView: View {
             Spacer()
             AirPlayButton()
             CastButton()
+            Spacer()
+            NowPlayingRoundButton(systemImage: "quote.bubble", label: "Lyrics", isOn: showsLyrics) {
+                showsLyrics.toggle()
+            }
             Spacer()
             NowPlayingRoundButton(systemImage: "list.bullet", label: "Up Next", isOn: showsQueue) {
                 showsQueue.toggle()

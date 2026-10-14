@@ -36,6 +36,11 @@
 	<string>Coreplay saves pictures you take from videos to your photo library.</string>
 
 	<!-- Shown before reaching devices on the local network (streams, cameras, shares). -->
+	<!-- Handoff: carry on what's playing on another device. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>com.coreplay.playback</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Coreplay finds shared folders, media servers and Chromecasts on your network, and plays from them.</string>
 	<!-- Bonjour services VLC's discovery looks for: shares, and Chromecasts for casting. -->

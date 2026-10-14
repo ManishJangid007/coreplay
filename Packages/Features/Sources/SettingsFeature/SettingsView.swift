@@ -254,6 +254,18 @@ private struct MetadataSettingsSection: View {
         } footer: {
             Text("Without a TMDB key, Coreplay gets show posters, episode titles and stills from TVmaze, and movie posters and synopses from Wikipedia. Neither needs an account. Wikipedia\u{2019}s posters are small, so a TMDB key gives sharper artwork; once you add one, TMDB takes over. Only titles and years are sent. TVmaze and Wikipedia text is shared under CC BY-SA 4.0.")
         }
+
+        Section {
+            Toggle("Look Up Lyrics", isOn: Binding(
+                get: { library.looksUpLyrics },
+                set: { library.setLooksUpLyrics($0) }
+            ))
+            Link("Lyrics from LRCLIB", destination: URL(string: "https://lrclib.net")!)
+        } header: {
+            Text("Lyrics")
+        } footer: {
+            Text("Songs without lyrics in their tags or an .lrc file beside them get synced lyrics from LRCLIB, which needs no account. The song\u{2019}s title, artist, album and length are sent.")
+        }
     }
 
     private func save() async {

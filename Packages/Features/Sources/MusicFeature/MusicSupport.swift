@@ -145,6 +145,7 @@ struct TrackMenuItems: View {
         Button("Play Later", systemImage: "text.line.last.and.arrowtriangle.forward") {
             playback.playLater(tracks)
         }
+        AddToPlaylistMenu(tracks: tracks)
         if tracks.count == 1, let track = tracks.first {
             Divider()
             if showsGoToAlbum, let album = track.album {

@@ -27,19 +27,32 @@ public enum LibrarySchemaV2: VersionedSchema {
     }
 }
 
-/// Upgrades existing libraries in place: version 2 only adds entities and
-/// attributes with defaults, so a lightweight migration keeps every source,
-/// edit and play count.
+/// Version 3 (Milestone 8): playlists. Version 2's models are unchanged,
+/// so it only adds the `Playlist` entity.
+public enum LibrarySchemaV3: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(3, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        LibrarySchemaV2.models + [Playlist.self]
+    }
+}
+
+/// Upgrades existing libraries in place: versions 2 and 3 only add entities
+/// and attributes with defaults, so lightweight migrations keep every
+/// source, edit and play count.
 public enum LibraryMigrationPlan: SchemaMigrationPlan {
-    public static var schemas: [any VersionedSchema.Type] { [LibrarySchemaV1.self, LibrarySchemaV2.self] }
+    public static var schemas: [any VersionedSchema.Type] { [LibrarySchemaV1.self, LibrarySchemaV2.self, LibrarySchemaV3.self] }
 
     public static var stages: [MigrationStage] {
-        [.lightweight(fromVersion: LibrarySchemaV1.self, toVersion: LibrarySchemaV2.self)]
+        [
+            .lightweight(fromVersion: LibrarySchemaV1.self, toVersion: LibrarySchemaV2.self),
+            .lightweight(fromVersion: LibrarySchemaV2.self, toVersion: LibrarySchemaV3.self),
+        ]
     }
 }
 
 public enum LibraryStore {
-    public typealias CurrentSchema = LibrarySchemaV2
+    public typealias CurrentSchema = LibrarySchemaV3
 
     /// The on-disk library (Application Support/Library.store), or an
     /// in-memory one for tests and previews.

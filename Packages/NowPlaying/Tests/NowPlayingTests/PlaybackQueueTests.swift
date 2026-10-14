@@ -140,4 +140,16 @@ struct PlaybackQueueTests {
         while queue.advance(automatic: true) != nil {}
         #expect(queue.history.count == PlaybackQueue.historyLimit)
     }
+
+    @Test func clearingUpNextKeepsWhatsPlaying() {
+        var queue = PlaybackQueue()
+        queue.replace(with: makeItems(5))
+        _ = queue.advance(automatic: false)
+        queue.clearUpNext()
+        #expect(titles(queue.upNext).isEmpty)
+        #expect(queue.currentItem != nil)
+        #expect(queue.advance(automatic: true) == nil)
+        queue.playLater(makeItems(2))
+        #expect(queue.upNext.count == 2)
+    }
 }

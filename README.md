@@ -51,6 +51,8 @@ App/
 Config/Base.xcconfig  Team, bundle ID prefix, version
 Design/               Source artwork for the logo and app icon
 Docs/Milestones.md    Status, and what each milestone built, stubbed and changed
+Widgets/              The widget extension (playback controls on the Home Screen
+                      and the Mac's desktop)
 Tools/                make_brand_assets.py (icons from Design/), build-check.sh
                       and build-watch.sh (command-line builds)
 Packages/
@@ -154,7 +156,7 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   current page, so changing page never scrolls full-size artwork. The
   watchlist ("+") is a list of IDs in user defaults, so it needs no schema
   change.
-- **Upgrades**: the schema is versioned (`LibrarySchemaV1`, `V2`) with a
+- **Upgrades**: the schema is versioned (`LibrarySchemaV1`, `V2`, `V3`) with a
   migration plan, and a test opens a real version 1 library to prove it.
 
 ## How playback works
@@ -253,6 +255,39 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Online subtitles.** With your OpenSubtitles.com API key (Settings,
   kept in the Keychain), Subtitles ▸ Search OpenSubtitles finds subtitles by
   the file's hash, then by title or episode, and loads the one you pick.
+
+## Playlists, lyrics and the rest of Milestone 8
+
+- **Playlists** (`Playlist`, schema version 3) keep songs by content key, in
+  order, so they survive rescans and match the same file on another device;
+  songs the library doesn't have are counted, not shown. Add to Playlist is
+  in every song's menu; a playlist reorders and removes like Up Next, and
+  M3U, PLS and XSPF files import as playlists of the library songs they list.
+- **Smart playlists** keep `SmartPlaylistRules` (PlaybackCore, tested on
+  Linux): title, artist, album, genre, year, plays, length, date added and
+  last played, matched all or any, ordered and limited.
+- **Composers** come from the songs' tags.
+- **Lyrics** in Now Playing (the quote button): the song's own tags, an
+  `.lrc` file beside it, or LRCLIB when Settings ▸ Metadata ▸ Look Up
+  Lyrics is on (off at first; title, artist, album and length are sent).
+  Synced lyrics follow the song and a tap jumps to a line (`Lyrics` reads LRC).
+- **Sleep timer** (the moon in Now Playing and the video player): 15 to 90
+  minutes with a ten-second fade, or the end of the song or video.
+- **Up Next** has Clear.
+- **iCloud sync** (`LibraryCloudSync`) sends play counts, where videos got
+  to, watched state, favourites and playlists through iCloud key-value
+  storage, keyed by content fingerprint; each device scans its own files.
+  It needs **Signing & Capabilities ▸ + Capability ▸ iCloud ▸
+  Key-value storage** on the Coreplay target (not switched on here, because
+  it needs your developer team); until then nothing syncs and nothing breaks.
+- **Shortcuts and Siri** (`App/Coreplay/AppIntents.swift`): Play Playlist,
+  Shuffle My Music, Play or Pause, Next, Previous and Open Network Stream.
+- **Handoff:** what's playing appears on your other devices (a library file
+  by content key, a stream or share by address) and carries on from the same
+  place.
+- **Widgets** (`Widgets/`): Coreplay Controls, small and medium, with
+  previous, play/pause, next and (medium) Shuffle. The buttons are audio
+  playback intents, which the system performs in the app.
 
 ## How networking works
 
