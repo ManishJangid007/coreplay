@@ -2,6 +2,8 @@ import Foundation
 import SwiftData
 #if os(macOS)
 import Security
+#else
+import MachO
 #endif
 
 /// Where iCloud keeps small values: `NSUbiquitousKeyValueStore`, or a
@@ -31,17 +33,16 @@ extension NSUbiquitousKeyValueStore: CloudValueStore {
 public final class LibraryCloudSync {
     public static let entitlement = "com.apple.developer.ubiquity-kvstore-identifier"
 
-    /// Whether this build may use iCloud key-value storage. The app is signed
-    /// with the entitlement, but builds made without signing (tests, command
-    /// line checks) aren't, and there `NSUbiquitousKeyValueStore` only logs
-    /// "BUG IN CLIENT OF KVS", so sync stays off.
+    /// Whether this build may use iCloud key-value storage: the app must be
+    /// signed with the iCloud ▸ Key-value storage entitlement, which needs a
+    /// paid Apple Developer Program team. Without it `NSUbiquitousKeyValueStore`
+    /// only logs "BUG IN CLIENT OF KVS", so sync stays off.
     public static var isAvailable: Bool {
         #if os(macOS)
         guard let task = SecTaskCreateFromSelf(nil) else { return false }
         return SecTaskCopyValueForEntitlement(task, entitlement as CFString, nil) != nil
         #else
-        // iOS has no public way to read an entitlement; its builds always carry it.
-        return true
+        return SignedEntitlements.contain(entitlement)
         #endif
     }
 
@@ -268,3 +269,36 @@ public final class LibraryCloudSync {
         return decoder
     }
 }
+
+#if !os(macOS)
+/// iOS has no public call that reads an entitlement, so this looks where
+/// signing put them: in the Simulator, a section of the app's binary; on a
+/// device, the provisioning profile a development build carries.
+enum SignedEntitlements {
+    static func contain(_ key: String) -> Bool {
+        #if targetEnvironment(simulator)
+        guard let header = _dyld_get_image_header(0) else { return false }
+        var size: UInt = 0
+        let header64 = UnsafeRawPointer(header).assumingMemoryBound(to: mach_header_64.self)
+        guard let bytes = getsectiondata(header64, "__TEXT", "__entitlements", &size), size > 0 else { return false }
+        return dictionary(in: Data(bytes: bytes, count: Int(size)))?[key] != nil
+        #else
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision") else {
+            // App Store and TestFlight builds carry no profile; they have
+            // whatever capabilities they were shipped with.
+            return true
+        }
+        guard let data = try? Data(contentsOf: url),
+              let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+              let profile = dictionary(in: Data(data[start.lowerBound..<end.upperBound])),
+              let entitlements = profile["Entitlements"] as? [String: Any] else { return false }
+        return entitlements[key] != nil
+        #endif
+    }
+
+    private static func dictionary(in data: Data) -> [String: Any]? {
+        (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
+    }
+}
+#endif

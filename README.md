@@ -280,10 +280,11 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **iCloud sync** (`LibraryCloudSync`) sends play counts, where videos got
   to, watched state, favourites and playlists through iCloud key-value
   storage, keyed by content fingerprint; each device scans its own files.
-  The app carries the **iCloud ▸ Key-value storage** entitlement
-  (`App/Support/Coreplay-*.entitlements`), so Xcode's automatic signing
-  needs a paid Apple Developer Program team. Builds made without signing
-  (tests, `Tools/build-check.sh`) leave sync off quietly.
+  It needs the **iCloud ▸ Key-value storage** capability, and iCloud needs a
+  paid Apple Developer Program team (a free Personal Team can't sign it).
+  The app checks for the entitlement: without it sync stays off, with no
+  warning. With a paid team, add it under Signing & Capabilities for macOS
+  and iOS and sync starts by itself.
 - **Shortcuts and Siri** (`App/Coreplay/AppIntents.swift`): Play Playlist,
   Shuffle My Music, Play or Pause, Next, Previous and Open Network Stream.
 - **Handoff:** what's playing appears on your other devices (a library file
