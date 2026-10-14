@@ -88,9 +88,11 @@ final class AppModel {
         }
         connectPictureInPicture()
         Self.shared = self
-        let sync = LibraryCloudSync(library: library)
-        sync.start()
-        cloudSync = sync
+        if LibraryCloudSync.isAvailable {
+            let sync = LibraryCloudSync(library: library)
+            sync.start()
+            cloudSync = sync
+        }
         CoreplayShortcuts.updateAppShortcutParameters()
     }
 

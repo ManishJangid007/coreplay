@@ -9,7 +9,7 @@
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
 | 6 | VLC parity: feature checklist against the sample suite | Done (checked on the Mac); DVD and Blu-ray wait for a VLCKit built with disc support |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | Done (checked on the Mac); indexing shares into the library waits for your go-ahead (a data model change) |
-| 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | Done (checked on the Mac); iCloud sync needs one capability switched on in Xcode |
+| 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | Done (checked on the Mac) |
 | 9 | Hardening: accessibility, performance, tests, soak testing | Done (checked on the Mac); a run on an iPhone and Instruments on a device are yours to do |
 
 ## Your additions (October 13)
@@ -81,11 +81,11 @@ These come on top of the plan; nothing in the plan was dropped for them.
 - **Builds:** macOS and the iOS Simulator, with the new widget extension embedded in both.
 - **Tests on the Mac:** 340 package tests pass. New ones: playlist order, moves and removals with a song only on another device; smart playlists from rules and play counts; iCloud sync between two libraries through a stand-in store (counts, progress, playlists, then a deletion travelling back); an old library upgrading to version 3 with its videos and a new playlist.
 - **Tests on Linux:** LRC reading (offsets, several stamps a line, plain text), the line playing at a time, smart playlist rules, ordering and limits, LRCLIB requests and replies, and Clear Up Next.
-- **Not yet checked by hand:** Siri phrases, Handoff and the widget on devices, and iCloud sync (it needs the capability below).
+- **Not yet checked by hand:** Siri phrases, Handoff, the widget and iCloud sync on devices.
 
 ### Stubbed or deferred
 
-- **iCloud sync needs one switch:** Signing & Capabilities ▸ + Capability ▸ iCloud ▸ Key-value storage on the Coreplay target. I didn't turn it on, because it needs your developer team and would stop the app building if the team can't use iCloud. Until it's on, nothing syncs and nothing else changes.
+- **iCloud sync is on:** the app now carries the iCloud ▸ Key-value storage entitlement on the Mac and iPhone (your paid developer team signs it). Unsigned builds, such as the test runs, leave sync off without the “BUG IN CLIENT OF KVS” warning.
 - **The widget shows controls, not what's playing:** showing the song would need an App Group shared between the app and the widget, which (like iCloud) depends on your team's capabilities.
 - **Settings and the watchlist aren't synced** (the watchlist names movies by this device's library IDs).
 

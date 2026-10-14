@@ -25,5 +25,9 @@
 	     the video from a small server VLC runs while casting. -->
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- iCloud ▸ Key-value storage: play counts, progress, favourites and
+	     playlists follow you between your devices (LibraryCloudSync). -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
 </dict>
 </plist>

@@ -1,5 +1,8 @@
 import Foundation
 import SwiftData
+#if os(macOS)
+import Security
+#endif
 
 /// Where iCloud keeps small values: `NSUbiquitousKeyValueStore`, or a
 /// stand-in for tests.
@@ -26,6 +29,22 @@ extension NSUbiquitousKeyValueStore: CloudValueStore {
 /// Needs the iCloud ▸ Key-value storage capability; without it nothing syncs.
 @MainActor
 public final class LibraryCloudSync {
+    public static let entitlement = "com.apple.developer.ubiquity-kvstore-identifier"
+
+    /// Whether this build may use iCloud key-value storage. The app is signed
+    /// with the entitlement, but builds made without signing (tests, command
+    /// line checks) aren't, and there `NSUbiquitousKeyValueStore` only logs
+    /// "BUG IN CLIENT OF KVS", so sync stays off.
+    public static var isAvailable: Bool {
+        #if os(macOS)
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, entitlement as CFString, nil) != nil
+        #else
+        // iOS has no public way to read an entitlement; its builds always carry it.
+        return true
+        #endif
+    }
+
     public static let recordsKey = "coreplay.records.v1"
     public static let playlistsKey = "coreplay.playlists.v1"
     /// The most play records sent (iCloud keeps 1 MB per app).
