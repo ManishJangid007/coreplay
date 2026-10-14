@@ -177,6 +177,7 @@ private struct FrameCollector {
         tags.musicBrainzAlbumID = Text.cleaned(userText["musicbrainz album id"])
         tags.musicBrainzArtistID = Text.cleaned(userText["musicbrainz artist id"])
         tags.musicBrainzRecordingID = Text.cleaned(recordingID)
+        tags.replayGain = ReplayGainTags.from(lowercasedFields: userText)
         tags.artwork = EmbeddedArtwork.best(of: pictures)
         if let lengthMilliseconds {
             tags.duration = TimeInterval(lengthMilliseconds) / 1000

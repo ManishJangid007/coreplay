@@ -172,8 +172,18 @@ enum TestMovie {
             return url
         }
         let url = FileManager.default.temporaryDirectory.appending(path: "coreplay-smoke-\(seconds)s-\(UUID().uuidString).mp4")
-        try await write(to: url, seconds: seconds)
+        try await write(to: url, seconds: seconds, width: width, height: height, pixelAspect: nil)
         cached[seconds] = url
+        Trace.write("movie: wrote \(url.lastPathComponent)")
+        return url
+    }
+
+    /// A two-second movie of another shape: `width` × `height` pixels, which
+    /// with `pixelAspect` (horizontal ÷ vertical spacing) aren't square.
+    static func shaped(width: Int, height: Int, pixelAspect: (Int, Int)? = nil) async throws -> URL {
+        let name = "coreplay-shape-\(width)x\(height)-\(pixelAspect.map { "\($0.0)to\($0.1)" } ?? "square")-\(UUID().uuidString).mp4"
+        let url = FileManager.default.temporaryDirectory.appending(path: name)
+        try await write(to: url, seconds: 2, width: width, height: height, pixelAspect: pixelAspect)
         Trace.write("movie: wrote \(url.lastPathComponent)")
         return url
     }
@@ -183,16 +193,23 @@ enum TestMovie {
         (frame * 4) % (width - barWidth)
     }
 
-    private static func write(to url: URL, seconds: Int) async throws {
+    private static func write(to url: URL, seconds: Int, width: Int, height: Int, pixelAspect: (Int, Int)?) async throws {
         let framesPerSecond = Int32(Self.framesPerSecond)
         let sampleRate = 44_100
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        var videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-        ])
+        ]
+        if let pixelAspect {
+            videoSettings[AVVideoPixelAspectRatioKey] = [
+                AVVideoPixelAspectRatioHorizontalSpacingKey: pixelAspect.0,
+                AVVideoPixelAspectRatioVerticalSpacingKey: pixelAspect.1,
+            ]
+        }
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         video.expectsMediaDataInRealTime = false
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -276,12 +293,14 @@ enum TestMovie {
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        let start = Self.barStart(frame: frame)
+        // The bar moves 4 pixels a frame, wrapping before the right edge.
+        let start = (frame * 4) % max(width - barWidth, 1)
+        let bar = min(barWidth, width)
         for y in 0..<height {
             // BGRA, little-endian: 0xAARRGGBB.
             let row = base.advanced(by: y * bytesPerRow)
             row.initializeMemory(as: UInt32.self, repeating: 0xFF20_3060, count: width)
-            row.advanced(by: start * 4).initializeMemory(as: UInt32.self, repeating: 0xFFFF_FFFF, count: barWidth)
+            row.advanced(by: start * 4).initializeMemory(as: UInt32.self, repeating: 0xFFFF_FFFF, count: bar)
         }
     }
 

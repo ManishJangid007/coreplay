@@ -54,8 +54,9 @@ public struct EngineCapabilities: OptionSet, Hashable, Sendable {
         .stereoModes, .volumeBoost, .pictureInPicture,
     ]
 
-    /// What `AVPlayerEngine` offers.
+    /// What `AVPlayerEngine` offers. Subtitle styling covers size, font,
+    /// colour, outline, background and height (text style rules).
     public static let avFoundation: EngineCapabilities = [
-        .frameStepping, .chapters, .snapshots, .nativeAirPlayVideo, .pictureInPicture,
+        .subtitleStyling, .frameStepping, .chapters, .snapshots, .nativeAirPlayVideo, .pictureInPicture,
     ]
 }

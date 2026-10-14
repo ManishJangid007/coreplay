@@ -39,6 +39,15 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
     /// `false` opens no audio output at all, so a silent preview never
     /// interrupts music playing in another app.
     public var playsAudio: Bool
+    /// The track's ReplayGain values, read from its tags just before it plays.
+    public var replayGain: ReplayGainValues?
+    /// Part of the file played as if it were the whole item: a cue sheet's
+    /// track inside one long recording. The player's times count from its start.
+    public var segment: PlaybackSegment?
+    /// A DVD or Blu-ray (a folder copied from the disc, or an image), which
+    /// VLC plays with its menus. `url` is then the folder holding VIDEO_TS or
+    /// BDMV, or the image. The player sets this when it opens one.
+    public var disc: DiscKind?
 
     public init(
         id: UUID = UUID(),
@@ -105,4 +114,38 @@ public enum EnginePreference: String, Hashable, Sendable, Codable, CaseIterable 
     case vlc
     /// Always use AVFoundation for this item (may fail for formats Apple can't play).
     case avFoundation
+}
+
+/// A stretch of a file: from `start` to `end` (the end of the file when `nil`).
+public struct PlaybackSegment: Hashable, Sendable {
+    public var start: TimeInterval
+    public var end: TimeInterval?
+
+    public init(start: TimeInterval, end: TimeInterval? = nil) {
+        self.start = max(0, start)
+        self.end = end.map { max($0, start) }
+    }
+
+    /// Its length, given the whole file's.
+    public func duration(fileDuration: TimeInterval?) -> TimeInterval? {
+        guard let end = end ?? fileDuration else { return nil }
+        return max(0, end - start)
+    }
+
+    /// `true` when `next` picks up exactly where this one stops, in the same file.
+    public func continues(into next: PlaybackSegment) -> Bool {
+        guard let end else { return false }
+        return abs(next.start - end) < 0.05
+    }
+}
+
+extension PlaylistEntry {
+    /// The entry as something to play: a cue sheet's track becomes a segment of its file.
+    public var playbackItem: PlaybackItem {
+        var item = PlaybackItem(url: url, title: title, artist: artist)
+        if let start, start > 0 || end != nil {
+            item.segment = PlaybackSegment(start: start, end: end)
+        }
+        return item
+    }
 }

@@ -36,7 +36,8 @@ extension VLCKitEngine {
         if aspectRatio != nil { applyAspectRatio() }
         if cropRatio != nil { applyCrop() }
         if !videoAdjustments.isNeutral { applyAdjustments() }
-        if deinterlace != .automatic { applyDeinterlace() }
+        if deinterlace != .automatic || deinterlaceFilter != .standard { applyDeinterlace() }
+        if !viewpoint.isStraightAhead { applyViewpoint() }
         if stereoMode != .automatic { applyStereoMode() }
         if equalizer.isEnabled { applyEqualizer() }
         if subtitleScale != 1 { applySubtitleScale() }
@@ -89,8 +90,24 @@ extension VLCKitEngine {
         case .on: .on
         case .off: .off
         }
+        let filter = deinterlaceFilter.rawValue
         onOutputQueue { player in
-            player.setDeinterlace(mode, withFilter: "yadif")
+            player.setDeinterlace(mode, withFilter: filter)
+        }
+    }
+
+    /// Where a 360° video looks. libVLC keeps the viewpoint on the player
+    /// and hands it to the video output, which projects the sphere.
+    func applyViewpoint() {
+        let view = viewpoint
+        onOutputQueue { player in
+            _ = player.updateViewpoint(
+                Float(view.yaw),
+                pitch: Float(view.pitch),
+                roll: Float(view.roll),
+                fov: Float(view.fieldOfView),
+                absolute: true
+            )
         }
     }
 

@@ -109,20 +109,35 @@ extension LibraryIndexer {
     /// existing files should be read again for.
     /// Bumped when parsing learns something new, so unchanged videos are read
     /// again on the next scan. 2: local artwork is remembered (Milestone 5).
-    static let videoProbeVersion = 2
+    /// 3: DVD and Blu-ray folders and images (Milestone 6).
+    static let videoProbeVersion = 3
 
     /// Reads everything about a video file (off the actor).
     static func parseVideo(_ file: FoundFile, source: ByteSource?, hint: VideoContentHint, artworkStore: ArtworkStore, folders: VideoFolderCache) -> ParsedVideo {
         var info = source.flatMap { try? VideoProbe.read($0) }
-        let relative = file.relativePath.isEmpty ? file.url.lastPathComponent : file.relativePath
+        let disc = file.disc != nil ? DiscLayout.disc(at: file.url) : nil
+        if let disc, info == nil || file.isDiscFolder {
+            info = discVideoInfo(disc)
+        }
+        // A disc that is a whole source is named after its folder or image.
+        let relative = file.relativePath.isEmpty ? disc?.displayName ?? file.url.lastPathComponent : file.relativePath
         var name = VideoNameParser.parse(relativePath: relative, hint: hint, duration: info?.duration)
-        let directory = file.url.deletingLastPathComponent()
-        let base = file.url.deletingPathExtension().lastPathComponent
+        // A disc folder keeps its artwork and .nfo inside it (as Kodi does):
+        // poster.jpg and movie.nfo next to VIDEO_TS or BDMV.
+        let directory = file.isDiscFolder ? file.url : file.url.deletingLastPathComponent()
+        let base = file.isDiscFolder ? "movie" : file.url.deletingPathExtension().lastPathComponent
 
         // An .nfo file beside the video says what it is.
         var nfo = folders.nfo(in: directory, named: "\(base).nfo")
         if nfo == nil, name.kind != .episode, folders.videoCount(in: directory) <= 1 {
             nfo = folders.nfo(in: directory, named: "movie.nfo")
+        }
+        if nfo == nil, file.isDiscFolder, let disc {
+            // Or VIDEO_TS.nfo in VIDEO_TS, index.nfo in BDMV.
+            let structure = disc.kind == .dvd ? disc.playbackURL : DiscLayout.entries(of: disc.root)["BDMV"]
+            if let structure {
+                nfo = folders.nfo(in: structure, named: disc.kind == .dvd ? "VIDEO_TS.nfo" : "index.nfo")
+            }
         }
         if let nfo, hint != .homeVideos {
             switch nfo.kind {
@@ -176,6 +191,45 @@ extension LibraryIndexer {
         info?.coverArt = nil
         parsed.info = info
         return parsed
+    }
+
+    /// What a DVD's IFO files or a Blu-ray's playlists say, as a container
+    /// probe would: the film's length, picture, sound and subtitles.
+    static func discVideoInfo(_ disc: Disc) -> VideoInfo? {
+        switch disc.kind {
+        case .dvd:
+            guard let dvd = DVDVideoInfo.read(disc) else { return nil }
+            var info = VideoInfo(container: "DVD-Video")
+            info.duration = dvd.mainTitle?.duration
+            info.chapterCount = dvd.mainTitle?.chapters
+            if let video = dvd.video {
+                info.width = video.width
+                info.height = video.height
+                info.frameRate = video.frameRate
+                info.videoCodec = video.codec
+            }
+            info.audioTracks = dvd.audio.enumerated().map { index, audio in
+                VideoInfo.AudioTrack(codec: audio.codec, channels: audio.channels, language: audio.language, title: audio.isCommentary ? "Commentary" : nil, isDefault: index == 0)
+            }
+            info.subtitleTracks = dvd.subtitles.map { VideoInfo.SubtitleTrack(codec: "DVD", language: $0.language) }
+            return info
+        case .bluray:
+            var info = VideoInfo(container: "Blu-ray")
+            guard let main = BlurayInfo.read(disc)?.mainPlaylist else { return info }
+            info.duration = main.duration
+            info.chapterCount = main.chapters
+            if let video = main.video, video.width > 0 {
+                info.width = video.width
+                info.height = video.height
+                info.frameRate = video.frameRate
+                info.videoCodec = video.codec
+            }
+            info.audioTracks = main.audio.enumerated().map { index, audio in
+                VideoInfo.AudioTrack(codec: audio.codec, channels: audio.channels, language: audio.language, isDefault: index == 0)
+            }
+            info.subtitleTracks = main.subtitles.map { VideoInfo.SubtitleTrack(codec: "PGS", language: $0) }
+            return info
+        }
     }
 
     /// The show's folder: the one above a season folder, or the file's own

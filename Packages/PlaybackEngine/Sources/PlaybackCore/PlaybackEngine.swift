@@ -11,7 +11,11 @@ public enum PlaybackEvent: Hashable, Sendable {
     /// Audio, video or subtitle tracks were added, removed or (de)selected.
     case tracksChanged
     case chaptersChanged
+    /// The titles changed, or another one started (a disc's menu included).
+    case titlesChanged
     case videoDimensionsChanged(VideoDimensions?)
+    /// The video turned out to be 360° (or flat after all).
+    case projectionChanged(VideoProjection)
     case metadataChanged(MediaMetadata)
     /// The video started or stopped playing on an AirPlay device.
     case externalPlaybackChanged(Bool)
@@ -75,6 +79,18 @@ public protocol PlaybackEngine: AnyObject {
     var chapters: [Chapter] { get }
     func selectChapter(at index: Int)
 
+    // MARK: Titles and disc menus
+
+    /// A disc's titles, its menus included, or a Matroska file's editions.
+    /// Empty (or one title) for most files.
+    var titles: [MediaTitle] { get }
+    /// The playing title's `id`.
+    var currentTitleIndex: Int? { get }
+    /// Plays a title from its start. Requires `.discMenus`.
+    func selectTitle(at index: Int)
+    /// Moves around a disc's menu, as a DVD player's remote does. Requires `.discMenus`.
+    func navigate(_ action: DiscNavigation)
+
     var videoDimensions: VideoDimensions? { get }
     /// Renders into `host`, or stops rendering when `nil`.
     func attachVideoOutput(to host: (any VideoOutputHost)?)
@@ -90,6 +106,15 @@ public protocol PlaybackEngine: AnyObject {
     var videoAdjustments: VideoAdjustments { get set }
     /// Requires `.deinterlacing`.
     var deinterlace: DeinterlaceMode { get set }
+    /// Which libVLC filter does the deinterlacing. Requires `.deinterlacing`.
+    var deinterlaceFilter: DeinterlaceFilter { get set }
+
+    // MARK: 360° video
+
+    /// How the playing picture is laid out: 360° videos are spherical.
+    var projection: VideoProjection { get }
+    /// Which way a 360° video looks. Requires `.viewpoint360`.
+    var viewpoint: Viewpoint { get set }
 
     // MARK: Sound (Level 2)
 
@@ -102,6 +127,13 @@ public protocol PlaybackEngine: AnyObject {
 
     /// Text size relative to the engine's default. Requires `.subtitleStyling`.
     var subtitleScale: Float { get set }
+    /// Font, colour, outline, background and height. AVFoundation applies it
+    /// straight away; VLC reads it when an engine is created (see
+    /// `EngineConfiguration.subtitleStyle`). Requires `.subtitleStyling`.
+    var subtitleStyle: SubtitleStyle { get set }
+    /// Shows a second subtitle track at the same time, or hides it (`nil`).
+    /// Requires `.dualSubtitles`.
+    func selectSecondarySubtitleTrack(id: MediaTrack.ID?)
 
     // MARK: Navigation (Level 2)
 

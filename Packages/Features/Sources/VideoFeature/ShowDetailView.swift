@@ -5,17 +5,18 @@ import PlaybackCore
 import SwiftData
 import SwiftUI
 
-/// A show's page, as in the TV app: the artwork with the title, what it's
-/// about and one button that carries on where you left off ("Resume S1, E5",
-/// "Play S1, E6" or "Play First Episode"); then a season menu over a row of
-/// wide episode cards that starts at the episode you're up to, the cast, and
-/// the details.
+/// A show's page, as in the TV app and Netflix: the show's picture fills the
+/// page behind the title, what it's about and one button that carries on
+/// where you left off ("Resume S1, E5", "Play S1, E6" or "Play First
+/// Episode"); then a season menu over a row of wide episode cards that starts
+/// at the episode you're up to, the cast, and the details.
 public struct ShowDetailView: View {
     @Environment(LibraryManager.self) private var library
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
     @State private var selectedSeason: Int?
+    @State private var scrollOffset: CGFloat = 0
     private let show: TVShow
     private let focusing: Video?
 
@@ -38,32 +39,49 @@ public struct ShowDetailView: View {
         let season = seasons.first { $0.number == selectedSeason } ?? seasons.first
         let next = library.nextUp(in: show)
         let hasStarted = show.episodes.contains { library.watchState(for: $0)?.lastPlayedDate != nil }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ShowHero(show: show, next: next, hasStarted: hasStarted, seasonCount: seasons.count { $0.number > 0 }, isCompact: isCompact)
-                VStack(alignment: .leading, spacing: 34) {
-                    if isCompact {
-                        ShowSummary(show: show)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ShowHero(show: show, next: next, hasStarted: hasStarted, seasonCount: seasons.count { $0.number > 0 }, isCompact: isCompact)
+                        .frame(minHeight: max(proxy.size.height * 0.74, isCompact ? 480 : 540), alignment: .bottom)
+                    VStack(alignment: .leading, spacing: 34) {
+                        if isCompact {
+                            ShowSummary(show: show)
+                        }
+                        if let season {
+                            SeasonEpisodesSection(
+                                seasons: seasons,
+                                season: season,
+                                selectedSeason: $selectedSeason,
+                                upNext: hasStarted ? next : nil,
+                                isCompact: isCompact
+                            )
+                        }
+                        if !show.cast.isEmpty {
+                            CastShelf(cast: show.cast)
+                        }
+                        ShowAboutSection(show: show, seasonCount: seasons.count { $0.number > 0 })
                     }
-                    if let season {
-                        SeasonEpisodesSection(
-                            seasons: seasons,
-                            season: season,
-                            selectedSeason: $selectedSeason,
-                            upNext: hasStarted ? next : nil,
-                            isCompact: isCompact
-                        )
-                    }
-                    if !show.cast.isEmpty {
-                        CastShelf(cast: show.cast)
-                    }
-                    ShowAboutSection(show: show, seasonCount: seasons.count { $0.number > 0 })
+                    .padding(.horizontal, isCompact ? Metrics.contentPadding : 48)
+                    .padding(.top, 30)
+                    .padding(.bottom, 48)
                 }
-                .padding(Metrics.contentPadding)
-                .padding(.top, 6)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                scrollOffset = offset
+            }
+            .background {
+                DetailBackdrop(
+                    url: library.artworkURL(wideArtworkKey(next: next), .large),
+                    fallbackURL: library.artworkURL(show.posterArtworkKey, .large),
+                    dimming: min(max(scrollOffset / 420, 0), 1)
+                )
             }
         }
         .ignoresSafeArea(edges: .top)
+        .environment(\.colorScheme, .dark)
         .navigationTitle(show.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -84,12 +102,18 @@ public struct ShowDetailView: View {
             }
         }
     }
+
+    /// The show's backdrop, else a still of the episode you're up to (or the
+    /// first). Without either, the poster is shown blurred.
+    private func wideArtworkKey(next: (video: Video, isResume: Bool)?) -> String? {
+        show.backdropKey ?? next?.video.stillArtworkKey ?? show.orderedEpisodes.first?.stillArtworkKey
+    }
 }
 
 // MARK: - Header
 
-/// The top of a show's page: artwork, title, synopsis, badges and the button
-/// that carries on watching.
+/// The top of a show's page, over the page's picture: title, synopsis,
+/// badges and the button that carries on watching.
 struct ShowHero: View {
     @Environment(LibraryManager.self) private var library
     @Environment(PlaybackSession.self) private var session
@@ -101,37 +125,15 @@ struct ShowHero: View {
     let isCompact: Bool
     @State private var showsFullOverview = false
 
-    private var height: CGFloat {
-        isCompact ? 500 : 620
-    }
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            artwork
+        Group {
             if isCompact {
                 compactDetails
             } else {
                 wideDetails
             }
         }
-        .frame(height: height)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var artwork: some View {
-        ZStack {
-            LinearGradient(colors: [Color(white: 0.24), Color(white: 0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            FilledArtwork(url: library.artworkURL(artworkKey, .large), maxPixelSize: 2_000)
-        }
-        .overlay { HeroScrim(isCompact ? .card : .wide) }
-        .heroBottomFade()
-        .frame(height: height)
-        .clipped()
-        .accessibilityHidden(true)
-    }
-
-    private var artworkKey: String? {
-        show.backdropKey ?? next?.video.stillArtworkKey ?? show.posterArtworkKey ?? show.orderedEpisodes.first?.stillArtworkKey
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var wideDetails: some View {
@@ -174,7 +176,7 @@ struct ShowHero: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 48)
-        .padding(.bottom, height * 0.12 + 28)
+        .padding(.bottom, 12)
     }
 
     private var compactDetails: some View {
@@ -190,8 +192,9 @@ struct ShowHero: View {
                 .padding(.top, 4)
         }
         .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, Metrics.contentPadding)
-        .padding(.bottom, height * 0.12 + 12)
+        .padding(.bottom, 8)
     }
 
     private func overviewView(_ overview: String) -> some View {
@@ -269,7 +272,7 @@ struct ShowHero: View {
 }
 
 /// The whole synopsis, from "More".
-private struct OverviewPopover: View {
+struct OverviewPopover: View {
     let title: String
     let text: String
 

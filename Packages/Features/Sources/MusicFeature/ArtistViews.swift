@@ -15,29 +15,20 @@ public struct ArtistsView: View {
             if artists.isEmpty {
                 MusicEmptyState()
             } else {
-                List(artists) { artist in
-                    NavigationLink(value: artist) {
-                        ArtistRow(artist: artist)
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)], spacing: 26) {
+                        ForEach(artists) { artist in
+                            NavigationLink(value: artist) {
+                                ArtistTile(artist: artist)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                    .padding(Metrics.contentPadding)
                 }
-                .listStyle(.plain)
             }
         }
         .navigationTitle("Artists")
-    }
-}
-
-struct ArtistRow: View {
-    @Environment(LibraryManager.self) private var library
-    let artist: Artist
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ArtistPortrait(artworkURL: library.artworkURL(artist.artworkKey, .thumbnail), size: 44)
-            Text(artist.name)
-                .lineLimit(1)
-        }
-        .padding(.vertical, 2)
     }
 }
 
@@ -102,19 +93,18 @@ public struct ArtistDetailView: View {
                 }
                 if !songs.isEmpty {
                     section("Songs") {
-                        LazyVStack(spacing: 0) {
-                            ForEach(songs) { track in
+                        LazyVStack(spacing: 2) {
+                            ForEach(Array(songs.enumerated()), id: \.element.id) { index, track in
                                 Button {
                                     playback.play(songs, startingAt: track)
                                 } label: {
-                                    TrackRow(track: track, isCurrent: playback.isCurrent(track))
+                                    ChartTrackRow(track: track, number: index + 1, isCurrent: playback.isCurrent(track), isStriped: index.isMultiple(of: 2))
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!track.isAvailable)
                                 .contextMenu {
                                     TrackMenuItems(tracks: [track], onEditInfo: { editingTrack = track })
                                 }
-                                Divider()
                             }
                         }
                     }

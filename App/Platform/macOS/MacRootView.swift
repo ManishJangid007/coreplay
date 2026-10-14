@@ -65,6 +65,8 @@ struct MacRootView: View {
                 // A new sidebar item starts a fresh navigation stack.
                 .id(selection)
             }
+            // Albums starts with the hero carousel too.
+            .environment(\.libraryHero, .carousels)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if model.session.hasItem {
                     PlaybackBar()

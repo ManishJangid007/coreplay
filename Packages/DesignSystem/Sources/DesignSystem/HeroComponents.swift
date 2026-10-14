@@ -265,3 +265,50 @@ public struct PageDots: View {
         }
     }
 }
+
+// MARK: - Library pages with a hero
+
+/// The library pages that start with a hero carousel but live in packages
+/// that can't see it (Albums is in MusicFeature; the carousel is in
+/// VideoFeature).
+public enum LibraryHero: Hashable, Sendable {
+    case music
+}
+
+/// Draws the hero carousel for a library page. The app puts one in the
+/// environment (`\.libraryHero`).
+public struct LibraryHeroProvider: Sendable {
+    public let make: @MainActor @Sendable (LibraryHero, _ isCompact: Bool) -> AnyView
+
+    public init(make: @escaping @MainActor @Sendable (LibraryHero, _ isCompact: Bool) -> AnyView) {
+        self.make = make
+    }
+}
+
+extension EnvironmentValues {
+    @Entry public var libraryHero: LibraryHeroProvider? = nil
+}
+
+extension View {
+    /// A page that starts with a full-width hero runs it under the toolbar.
+    public func heroPageChrome(_ isActive: Bool) -> some View {
+        modifier(HeroPageChrome(isActive: isActive))
+    }
+}
+
+private struct HeroPageChrome: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content
+                .ignoresSafeArea(edges: .top)
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                #endif
+        } else {
+            content
+        }
+    }
+}

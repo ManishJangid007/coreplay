@@ -63,6 +63,7 @@ enum APETag {
         tags.musicBrainzRecordingID = fields["musicbrainz_trackid"]
         tags.musicBrainzAlbumID = fields["musicbrainz_albumid"]
         tags.musicBrainzArtistID = fields["musicbrainz_artistid"]
+        tags.replayGain = ReplayGainTags.from(lowercasedFields: fields)
         tags.artwork = artwork
         return (tags, tagStart)
     }

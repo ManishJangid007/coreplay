@@ -60,7 +60,9 @@ actor MediaProber {
                     probedTracks.append(MediaProbe.Track(kind: kind, codec: FourCC(rawValue: subtype), isPlayable: trackIsPlayable))
                 }
             }
-            return MediaProbe(isPlayable: isPlayable, hasProtectedContent: hasProtectedContent, tracks: probedTracks)
+            // A few kilobytes of the movie box; AVFoundation doesn't say.
+            let projection = probedTracks.contains { $0.kind == .video } ? SphericalVideoDetector.projection(ofFileAt: url) : .flat
+            return MediaProbe(isPlayable: isPlayable, hasProtectedContent: hasProtectedContent, tracks: probedTracks, projection: projection)
         } catch {
             return nil
         }

@@ -25,6 +25,8 @@ public final class PlaybackController {
         case duration
         case metadata
         case tracks
+        /// Another title started (a disc's menu included), or the list changed.
+        case titles
         case endOfMedia
     }
 
@@ -51,6 +53,10 @@ public final class PlaybackController {
     public private(set) var audioTracks: [MediaTrack] = []
     public private(set) var subtitleTracks: [MediaTrack] = []
     public private(set) var chapters: [Chapter] = []
+    /// A disc's titles, its menus included, or a file's editions.
+    public private(set) var titles: [MediaTitle] = []
+    /// The playing title's `id`.
+    public private(set) var currentTitleIndex: Int?
     public private(set) var videoDimensions: VideoDimensions?
     public private(set) var metadata = MediaMetadata()
     public private(set) var audioDelay: TimeInterval = 0
@@ -71,13 +77,73 @@ public final class PlaybackController {
     public private(set) var cropRatio: VideoRatio?
     public private(set) var videoAdjustments: VideoAdjustments = .neutral
     public private(set) var deinterlace: DeinterlaceMode = .automatic
+    /// Which filter deinterlaces; carries on to the next item.
+    public private(set) var deinterlaceFilter: DeinterlaceFilter = .standard
+    /// Turned and mirrored (the video view does it, so both engines can).
+    public private(set) var transform: VideoTransform = .identity
+    /// Magnified past fitting, and which part is in view (the video view does it).
+    public private(set) var zoom: VideoZoom = .none
+    /// The playing video is 360° (or flat).
+    public private(set) var projection: VideoProjection = .flat
+    /// Where a 360° video looks.
+    public private(set) var viewpoint: Viewpoint = .straightAhead
     public private(set) var stereoMode: StereoMode = .automatic
     public private(set) var equalizer: EqualizerSettings = .flat
     public private(set) var subtitleSize: SubtitleSize = .standard
+    public private(set) var subtitleStyle: SubtitleStyle = .standard
+    /// The character set for subtitle files that aren't Unicode; `nil` is automatic.
+    public private(set) var subtitleEncoding: String?
     public private(set) var abLoop = ABLoop()
+    /// Which tracks a video starts with when you haven't chosen for it before.
+    public var trackPreferences: TrackPreferences = .automatic
+    /// Levels music to the same loudness with its ReplayGain values.
+    public private(set) var replayGain: ReplayGainSettings = .off
+    /// What ReplayGain multiplies the current item's volume by (1: as recorded).
+    public private(set) var replayGainScale: Double = 1
 
     public var isPlaying: Bool {
         state == .playing || state == .buffering
+    }
+
+    /// A 360° video: you look around it rather than turning or magnifying it.
+    public var isSpherical: Bool {
+        projection.isSpherical
+    }
+
+    // MARK: Discs
+
+    /// The title playing, if the media has titles.
+    public var currentTitle: MediaTitle? {
+        guard let currentTitleIndex else { return nil }
+        return titles.first { $0.id == currentTitleIndex }
+    }
+
+    /// A DVD or Blu-ray is playing (from a folder or an image).
+    public var isDisc: Bool {
+        currentItem?.disc != nil
+    }
+
+    /// The disc's menu is on screen: the arrows and Select work it.
+    public var isShowingDiscMenu: Bool {
+        currentTitle?.isMenu == true
+    }
+
+    /// The disc has a menu to go back to.
+    public var hasDiscMenu: Bool {
+        titles.contains(where: \.isMenu)
+    }
+
+    /// The disc's film: its longest title.
+    public var mainTitle: MediaTitle? {
+        MediaTitle.mainFeature(in: titles)
+    }
+
+    /// The film is playing, rather than a menu or an extra. Always `true`
+    /// for files, so progress is saved only for a disc's film.
+    public var isPlayingMainTitle: Bool {
+        guard isDisc else { return true }
+        guard let main = mainTitle else { return false }
+        return main.id == currentTitleIndex
     }
 
     /// Whether the player should show video UI. The engine's report wins over
@@ -90,23 +156,25 @@ public final class PlaybackController {
     /// Library items show the library's title and artist (which the user may
     /// have edited); anything else prefers what the engine read from the file.
     public var displayTitle: String {
-        if let item = currentItem, item.libraryID != nil {
+        if let item = currentItem, item.namesItself {
             return item.title
         }
         return metadata.title ?? currentItem?.title ?? ""
     }
 
     public var displaySubtitle: String? {
-        if let item = currentItem, item.libraryID != nil {
-            return item.artist
+        if let item = currentItem, item.namesItself {
+            // The library's artist, even when it has none; a cue track falls back on the file's.
+            return item.libraryID != nil ? item.artist : item.artist ?? metadata.artist
         }
         return metadata.artist ?? currentItem?.artist
     }
 
+    /// The app's settings. The subtitle style and encoding chosen in the
+    /// player are merged in for the engines (see `updateFactoryConfiguration`).
     public var configuration: EngineConfiguration {
         didSet {
-            factory.configuration = configuration
-            router.alwaysUseVLC = configuration.alwaysUseVLC
+            updateFactoryConfiguration()
         }
     }
 
@@ -120,6 +188,36 @@ public final class PlaybackController {
     // MARK: Internals
 
     @ObservationIgnored public var onChange: (@MainActor (Change) -> Void)?
+    /// What you chose for a file last time (the session keeps them), or `nil`.
+    @ObservationIgnored public var rememberedOptions: (@MainActor (PlaybackItem) -> FileOptions?)?
+    /// Called when you change a video's tracks, timing or picture, to remember them.
+    @ObservationIgnored public var onOptionsChosen: (@MainActor (PlaybackItem, FileOptions) -> Void)?
+    /// The language the app runs in, for subtitle preferences.
+    @ObservationIgnored public var appLanguage = MediaTrack.normalizedLanguageCode(Locale.preferredLanguages.first ?? "en")
+    /// `trackPreferences` still to be applied as the item's tracks appear.
+    @ObservationIgnored private var appliesTrackPreferences = false
+    /// The tracks chosen for this item, by language: remembered from last
+    /// time, or picked now. `nil` while the file's own (or your preferred)
+    /// tracks play. Kept here rather than read back from the engine, which
+    /// reports a new selection a moment later.
+    @ObservationIgnored private var chosenTracks: ChosenTracks?
+
+    private struct ChosenTracks {
+        var audioLanguage: String?
+        var subtitleLanguage: String?
+        var subtitlesOff: Bool
+    }
+    /// The item's segment has played to its end (reported once).
+    @ObservationIgnored private var reachedSegmentEnd = false
+    /// The whole file's length, as the engine reports it (an item's
+    /// `duration` is its segment's).
+    @ObservationIgnored private var fileDuration: TimeInterval?
+    /// Where a disc picks up once its titles are known: a title (the film
+    /// when `nil`) and a time in it. Discs open at their menu, so a resume
+    /// position can't be handed to the engine as a start time.
+    @ObservationIgnored private var pendingDiscStart: (title: Int?, time: TimeInterval)?
+    /// The title for `pendingDiscStart` has been asked for.
+    @ObservationIgnored private var requestedDiscTitle = false
     @ObservationIgnored private var engine: (any PlaybackEngine)?
     @ObservationIgnored private var engineOptionsFingerprint: [String] = []
     @ObservationIgnored private var eventTask: Task<Void, Never>?
@@ -148,9 +246,15 @@ public final class PlaybackController {
         var audioLanguage: String?
         var subtitleLanguage: String?
         var subtitlesOff: Bool
+        // After a restart in the same kind of engine, the tracks keep their
+        // identifiers, so they're restored exactly (both subtitle tracks too).
+        var audioID: String?
+        var subtitleID: String?
+        var secondarySubtitleID: String?
 
         var isFinished: Bool {
             audioLanguage == nil && subtitleLanguage == nil && !subtitlesOff
+                && audioID == nil && subtitleID == nil && secondarySubtitleID == nil
         }
     }
 
@@ -164,6 +268,29 @@ public final class PlaybackController {
         self.videoView = host
         if purpose == .main {
             connectPictureInPicture()
+        }
+        Self.everyController.add(self)
+    }
+
+    // MARK: - One VLC picture at a time
+
+    /// Every controller there is, weakly held. Two libVLC video outputs at
+    /// once trip libVLC's OpenGL checks (which end the app in VLCKit's
+    /// development builds), so the player and the previews keep out of each
+    /// other's way: the player stops every preview before it opens anything,
+    /// and a preview never uses VLC while the player has a video.
+    private static let everyController = NSHashTable<PlaybackController>.weakObjects()
+
+    /// The player has a video, open or opening (in whichever engine).
+    static var playerHasVideo: Bool {
+        everyController.allObjects.contains { $0.purpose == .main && $0.currentItem?.kind == .video }
+    }
+
+    /// Stops every preview, waiting until each one's video output is gone.
+    private static func stopPreviews() async {
+        for controller in everyController.allObjects
+        where controller.purpose == .preview && (controller.currentItem != nil || controller.engine != nil) {
+            await controller.stop()
         }
     }
 
@@ -188,8 +315,46 @@ public final class PlaybackController {
             beginSecurityScopedAccess(to: subtitleURL, if: item.requiresSecurityScope)
         }
 
+        // A DVD or Blu-ray (its folder, its VIDEO_TS, an IFO file in it, or
+        // an image) opens as the disc, menus and all.
+        if item.disc == nil, item.segment == nil, !item.isPreview, DiscLayout.mightBeDisc(item.url) {
+            let url = item.url
+            let disc = await Task.detached(priority: .userInitiated) { DiscLayout.disc(at: url) }.value
+            guard loadGeneration == generation else { return }
+            if let disc {
+                item = item.playing(disc)
+            }
+        }
+        if item.disc != nil, !DiscLayout.canPlayDiscs {
+            await stop()
+            guard loadGeneration + 1 == generation else { return }
+            currentItem = item
+            setState(.failed(PlaybackError(.unsupportedFormat, "Coreplay can\u{2019}t play DVDs and Blu-rays yet: the VLC engine it uses was built without disc support. The VOB or M2TS files inside the disc play on their own.")))
+            notify(.item)
+            return
+        }
+        pendingDiscStart = nil
+        requestedDiscTitle = false
+        if item.disc != nil, let start = item.startPosition, start > 0 {
+            // Discs open at their menu, so the engine gets no start time:
+            // the film is chosen, then the time, once VLC lists the titles.
+            pendingDiscStart = (nil, start)
+            item.startPosition = nil
+        }
+
         currentItem = item
         resetMediaState()
+        updateReplayGainScale()
+        let remembered = item.kind == .audio || item.isPreview ? nil : rememberedOptions?(item)
+        chosenTracks = remembered.flatMap { options in
+            options.choosesTracks
+                ? ChosenTracks(audioLanguage: options.audioLanguage, subtitleLanguage: options.subtitleLanguage, subtitlesOff: options.subtitlesOff)
+                : nil
+        }
+        if let remembered {
+            restore(remembered)
+        }
+        appliesTrackPreferences = item.kind != .audio && !item.isPreview && remembered?.choosesTracks != true
         scrubPreviews.reset()
         hasPlayedCurrentItem = false
         didFallBackToVLC = false
@@ -201,6 +366,12 @@ public final class PlaybackController {
         setState(.opening)
         notify(.item)
         loadItemArtwork(for: item)
+
+        if purpose == .main {
+            // A clip playing behind a title gives way first (see `everyController`).
+            await Self.stopPreviews()
+            guard loadGeneration == generation else { return }
+        }
 
         var decision: EngineRouter.Decision
         if let quick = router.quickDecision(for: item) {
@@ -215,6 +386,14 @@ public final class PlaybackController {
            decision.reason != .protectedContent, decision.reason != .itemOverride {
             decision = EngineRouter.Decision(engine: .vlc, reason: .equalizer)
         }
+        if let remembered, remembered.needsVLC, decision.engine == .avFoundation,
+           decision.reason != .protectedContent, decision.reason != .itemOverride {
+            decision = EngineRouter.Decision(engine: .vlc, reason: .rememberedOptions)
+        }
+        if purpose == .preview, decision.engine == .vlc, Self.playerHasVideo {
+            setState(.failed(PlaybackError(.engineFailure, "The player is showing a video.")))
+            return
+        }
         routingReason = decision.reason
         await start(item, on: decision.engine, autoplay: autoplay, generation: loadGeneration)
     }
@@ -223,12 +402,19 @@ public final class PlaybackController {
         guard let engine = await prepareEngine(kind, generation: loadGeneration),
               loadGeneration == generation else { return }
         do {
-            try await engine.load(item)
+            try await engine.load(engineItem(item))
             guard loadGeneration == generation else { return }
             engine.rate = rate
-            engine.volume = volume
+            engine.volume = engineVolume
             engine.isMuted = isMuted
             applyOptions(to: engine)
+            // Timing remembered for this file.
+            if audioDelay != 0, engine.capabilities.contains(.audioDelay) {
+                engine.audioDelay = audioDelay
+            }
+            if subtitleDelay != 0, engine.capabilities.contains(.subtitleDelay) {
+                engine.subtitleDelay = subtitleDelay
+            }
             if autoplay {
                 engine.play()
             } else if engine.state == .opening {
@@ -362,9 +548,45 @@ public final class PlaybackController {
             target = min(target, max(0, duration - 0.25))
         }
         currentTime = target
-        seekHold = (target, .now + .seconds(2))
-        await engine.seek(to: target)
+        // The engine counts from the start of the file, the item from its segment.
+        let fileTarget = target + segmentOffset
+        seekHold = (fileTarget, .now + .seconds(2))
+        reachedSegmentEnd = false
+        await engine.seek(to: fileTarget)
         notify(.seek)
+        updatePictureInPicture(invalidate: true)
+    }
+
+    // MARK: - Segments
+
+    /// Where the item's segment starts in its file (0 for a whole file).
+    private var segmentOffset: TimeInterval {
+        currentItem?.segment?.start ?? 0
+    }
+
+    /// The item as the engine opens it: a segment starts at its own start.
+    private func engineItem(_ item: PlaybackItem) -> PlaybackItem {
+        guard let segment = item.segment else { return item }
+        var opened = item
+        opened.startPosition = segment.start + (item.startPosition ?? 0)
+        return opened
+    }
+
+    /// Carries on into the next stretch of the same file (a cue sheet's next
+    /// track) without opening it again, so there's no gap.
+    public func continueInto(_ item: PlaybackItem) {
+        guard let current = currentItem, current.url == item.url else { return }
+        currentItem = item
+        reachedSegmentEnd = false
+        if let fileDuration {
+            duration = item.segment?.duration(fileDuration: fileDuration) ?? fileDuration
+        }
+        metadata.title = item.title
+        if let artist = item.artist {
+            metadata.artist = artist
+        }
+        notify(.item)
+        notify(.duration)
         updatePictureInPicture(invalidate: true)
     }
 
@@ -401,9 +623,48 @@ public final class PlaybackController {
 
     /// 0…1, or up to 2 with the VLC engine (volume boost).
     public func setVolume(_ newVolume: Float) {
-        let limit: Float = capabilities.contains(.volumeBoost) ? 2 : 1
-        volume = min(max(newVolume, 0), limit)
-        engine?.volume = volume
+        volume = min(max(newVolume, 0), volumeLimit)
+        engine?.volume = engineVolume
+    }
+
+    /// Up to 2 (200%): above 1, the item moves to VLC, which can boost.
+    public func setBoostedVolume(_ newVolume: Float) async {
+        if newVolume > VolumeLimits.normal, !capabilities.contains(.volumeBoost), currentItem != nil {
+            await handOff(to: .vlc)
+        }
+        setVolume(newVolume)
+    }
+
+    /// Turns ReplayGain levelling on or off, or changes it, for this item and the next.
+    public func setReplayGain(_ settings: ReplayGainSettings) {
+        replayGain = settings
+        updateReplayGainScale()
+    }
+
+    /// ReplayGain values read after the item started (levelling was just turned on).
+    public func updateReplayGainValues(_ values: ReplayGainValues?) {
+        guard currentItem != nil else { return }
+        currentItem?.replayGain = values
+        updateReplayGainScale()
+    }
+
+    /// Music is levelled; films keep their own sound.
+    private func updateReplayGainScale() {
+        if let item = currentItem, item.kind == .audio {
+            replayGainScale = replayGain.scale(for: item.replayGain)
+        } else {
+            replayGainScale = 1
+        }
+        engine?.volume = engineVolume
+    }
+
+    private var volumeLimit: Float {
+        capabilities.contains(.volumeBoost) ? VolumeLimits.boosted : VolumeLimits.normal
+    }
+
+    /// What the engine plays at: your volume, levelled by ReplayGain.
+    private var engineVolume: Float {
+        VolumeLimits.engineVolume(chosen: volume, replayGainScale: replayGainScale, limit: volumeLimit)
     }
 
     public func setMuted(_ muted: Bool) {
@@ -415,14 +676,45 @@ public final class PlaybackController {
 
     public func selectAudioTrack(_ track: MediaTrack) {
         pendingTrackRestore = nil // the user's choice wins over a pending restore
+        appliesTrackPreferences = false
+        var chosen = chosenTracks ?? currentTrackChoice()
+        chosen.audioLanguage = audioTracks.count > 1 ? track.languageCode : nil
+        chosenTracks = chosen
         engine?.selectAudioTrack(id: track.id)
         refreshTracks()
+        rememberOptions()
     }
 
     /// Pass `nil` to turn subtitles off.
     public func selectSubtitleTrack(_ track: MediaTrack?) {
         pendingTrackRestore = nil
+        appliesTrackPreferences = false
+        var chosen = chosenTracks ?? currentTrackChoice()
+        chosen.subtitleLanguage = track?.languageCode
+        chosen.subtitlesOff = track == nil && !subtitleTracks.isEmpty
+        chosenTracks = chosen
         engine?.selectSubtitleTrack(id: track?.id)
+        refreshTracks()
+        rememberOptions()
+    }
+
+    /// What's playing now, as a choice to remember.
+    private func currentTrackChoice() -> ChosenTracks {
+        let audio = audioTracks.first(where: \.isSelected)
+        let subtitle = subtitleTracks.first(where: \.isSelected)
+        return ChosenTracks(
+            audioLanguage: audioTracks.count > 1 ? audio?.languageCode : nil,
+            subtitleLanguage: subtitle?.languageCode,
+            subtitlesOff: subtitle == nil && !subtitleTracks.isEmpty
+        )
+    }
+
+    /// Shows a second subtitle track with the first (two languages at
+    /// once), or hides it with `nil`. Needs VLC.
+    public func selectSecondarySubtitleTrack(_ track: MediaTrack?) {
+        guard capabilities.contains(.dualSubtitles) else { return }
+        pendingTrackRestore = nil
+        engine?.selectSecondarySubtitleTrack(id: track?.id)
         refreshTracks()
     }
 
@@ -433,6 +725,7 @@ public final class PlaybackController {
             await handOff(to: .vlc)
         }
         guard let engine else { return }
+        appliesTrackPreferences = false
         beginSecurityScopedAccess(to: url, if: true)
         try await engine.addExternalSubtitle(url: url)
         addedSubtitleURLs.append(url)
@@ -445,6 +738,7 @@ public final class PlaybackController {
         }
         audioDelay = seconds
         engine?.audioDelay = seconds
+        rememberOptions()
     }
 
     /// Positive values show subtitles later. Needs VLC; switches engines if necessary.
@@ -454,11 +748,60 @@ public final class PlaybackController {
         }
         subtitleDelay = seconds
         engine?.subtitleDelay = seconds
+        rememberOptions()
     }
 
     public func selectChapter(_ chapter: Chapter) {
         engine?.selectChapter(at: chapter.id)
         notify(.seek)
+    }
+
+    // MARK: - Titles and disc menus
+
+    /// Plays a title (a disc's film, an episode, an extra, its menu) from its start.
+    public func selectTitle(_ title: MediaTitle) {
+        guard capabilities.contains(.discMenus) else { return }
+        pendingDiscStart = nil
+        engine?.selectTitle(at: title.id)
+        notify(.seek)
+    }
+
+    /// The disc's remote: the arrows, Select and its menus.
+    public func navigateDisc(_ action: DiscNavigation) {
+        guard capabilities.contains(.discMenus) else { return }
+        pendingDiscStart = nil
+        engine?.navigate(action)
+    }
+
+    /// Picks a disc up where it was left: once VLC lists the titles, plays
+    /// the title (the film when none was noted), then goes to the time.
+    private func continueDiscStart() {
+        guard let pending = pendingDiscStart, !titles.isEmpty else { return }
+        guard let target = pending.title ?? mainTitle?.id else {
+            pendingDiscStart = nil
+            return
+        }
+        if currentTitleIndex == target {
+            pendingDiscStart = nil
+            let itemID = currentItem?.id
+            let titleLength = titles.first { $0.id == target }?.duration ?? 0
+            Task { [weak self] in
+                // libVLC reports the title's length a moment after it starts;
+                // seeking before that would be clamped to the menu's length.
+                for _ in 0..<30 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard let self, self.currentItem?.id == itemID else { return }
+                    if titleLength < 1 || self.duration.map({ abs($0 - titleLength) < 1.5 }) == true {
+                        break
+                    }
+                }
+                guard let self, self.currentItem?.id == itemID, self.currentTitleIndex == target else { return }
+                await self.seek(to: pending.time)
+            }
+        } else if !requestedDiscTitle {
+            requestedDiscTitle = true
+            engine?.selectTitle(at: target)
+        }
     }
 
     // MARK: - Level 2 options
@@ -478,6 +821,7 @@ public final class PlaybackController {
         if capabilities.contains(.aspectRatioOverride) {
             engine?.aspectRatio = ratio
         }
+        rememberOptions()
     }
 
     /// Trims the picture to a shape, or `nil` for the whole picture. Needs VLC.
@@ -489,6 +833,7 @@ public final class PlaybackController {
         if capabilities.contains(.crop) {
             engine?.cropRatio = ratio
         }
+        rememberOptions()
     }
 
     /// Brightness, contrast, saturation, hue and gamma. Needs VLC.
@@ -511,6 +856,59 @@ public final class PlaybackController {
         deinterlace = mode
         if capabilities.contains(.deinterlacing) {
             engine?.deinterlace = mode
+        }
+        rememberOptions()
+    }
+
+    /// Which filter deinterlaces (Yadif, Bob, Film NTSC…). Needs VLC.
+    public func setDeinterlaceFilter(_ filter: DeinterlaceFilter) async {
+        if filter != .standard, deinterlace != .off, !capabilities.contains(.deinterlacing), currentItem != nil {
+            await handOff(to: .vlc)
+        }
+        deinterlaceFilter = filter
+        if capabilities.contains(.deinterlacing) {
+            engine?.deinterlaceFilter = filter
+        }
+    }
+
+    // MARK: Turning, mirroring and magnifying
+
+    /// Turns and mirrors the picture. Both engines can: the video view does it.
+    public func setTransform(_ newTransform: VideoTransform) {
+        guard newTransform != transform else { return }
+        transform = newTransform
+        layoutVideoGeometry()
+        rememberOptions()
+    }
+
+    /// A quarter turn, as seen on screen.
+    public func rotate(clockwise: Bool = true) {
+        setTransform(transform.rotated(clockwise: clockwise))
+    }
+
+    public func flipHorizontally() {
+        setTransform(transform.flippedHorizontally())
+    }
+
+    public func flipVertically() {
+        setTransform(transform.flippedVertically())
+    }
+
+    /// Magnifies the picture (1 shows all of it). Both engines can.
+    public func setZoom(_ newZoom: VideoZoom) {
+        guard newZoom != zoom else { return }
+        zoom = newZoom
+        layoutVideoGeometry()
+    }
+
+    // MARK: 360° video
+
+    /// Where a 360° video looks. Needs VLC, which plays every 360° video.
+    public func setViewpoint(_ newViewpoint: Viewpoint) {
+        guard newViewpoint != viewpoint else { return }
+        viewpoint = newViewpoint
+        if capabilities.contains(.viewpoint360) {
+            engine?.viewpoint = newViewpoint
         }
     }
 
@@ -548,6 +946,40 @@ public final class PlaybackController {
         }
     }
 
+    /// Font, colour, outline, background and height of plain-text
+    /// subtitles. AVFoundation restyles at once; VLC reads the style when it
+    /// starts, so a VLC item with subtitles restarts at the same position.
+    public func setSubtitleStyle(_ style: SubtitleStyle) async {
+        guard style != subtitleStyle else { return }
+        subtitleStyle = style
+        updateFactoryConfiguration()
+        if capabilities.contains(.subtitleStyling) {
+            engine?.subtitleStyle = style
+        }
+        if activeEngine == .vlc, currentItem != nil, !subtitleTracks.isEmpty {
+            await restartEngine()
+        }
+    }
+
+    /// The character set of subtitle files that aren't Unicode (`nil`:
+    /// automatic). A VLC item with subtitles restarts at the same position.
+    public func setSubtitleEncoding(_ encoding: String?) async {
+        guard encoding != subtitleEncoding else { return }
+        subtitleEncoding = encoding
+        updateFactoryConfiguration()
+        if activeEngine == .vlc, currentItem != nil, !subtitleTracks.isEmpty {
+            await restartEngine()
+        }
+    }
+
+    private func updateFactoryConfiguration() {
+        var effective = configuration
+        effective.subtitleStyle = subtitleStyle
+        effective.subtitleEncoding = subtitleEncoding
+        factory.configuration = effective
+        router.alwaysUseVLC = configuration.alwaysUseVLC
+    }
+
     /// Shows the next or previous frame (pausing first).
     public func stepFrame(forward: Bool) {
         guard let engine, capabilities.contains(.frameStepping) else { return }
@@ -578,10 +1010,75 @@ public final class PlaybackController {
         if available.contains(.aspectRatioOverride) { engine.aspectRatio = aspectRatio }
         if available.contains(.crop) { engine.cropRatio = cropRatio }
         if available.contains(.videoAdjustments) { engine.videoAdjustments = videoAdjustments }
-        if available.contains(.deinterlacing) { engine.deinterlace = deinterlace }
+        if available.contains(.deinterlacing) {
+            engine.deinterlace = deinterlace
+            engine.deinterlaceFilter = deinterlaceFilter
+        }
+        if available.contains(.viewpoint360) { engine.viewpoint = viewpoint }
         if available.contains(.stereoModes) { engine.stereoMode = stereoMode }
         if available.contains(.equalizer) { engine.equalizer = equalizer }
-        if available.contains(.subtitleStyling) { engine.subtitleScale = subtitleSize.scale }
+        if available.contains(.subtitleStyling) {
+            engine.subtitleScale = subtitleSize.scale
+            engine.subtitleStyle = subtitleStyle
+        }
+    }
+
+    // MARK: - Remembered options and starting tracks
+
+    /// Puts back what you chose for this file last time. Tracks are picked
+    /// by language once the engine lists them.
+    private func restore(_ options: FileOptions) {
+        audioDelay = options.audioDelay
+        subtitleDelay = options.subtitleDelay
+        aspectRatio = options.aspectRatio
+        cropRatio = options.cropRatio
+        deinterlace = options.deinterlace
+        if options.transform != transform {
+            transform = options.transform
+            layoutVideoGeometry()
+        }
+        if options.choosesTracks {
+            pendingTrackRestore = TrackRestore(
+                audioLanguage: options.audioLanguage,
+                subtitleLanguage: options.subtitleLanguage,
+                subtitlesOff: options.subtitlesOff
+            )
+        }
+    }
+
+    /// Hands the current choices to whoever remembers them (the session).
+    private func rememberOptions() {
+        guard let item = currentItem, item.kind != .audio, !item.isPreview, let onOptionsChosen else { return }
+        let options = FileOptions(
+            audioLanguage: chosenTracks?.audioLanguage,
+            subtitleLanguage: chosenTracks?.subtitleLanguage,
+            subtitlesOff: chosenTracks?.subtitlesOff ?? false,
+            audioDelay: audioDelay,
+            subtitleDelay: subtitleDelay,
+            aspectRatio: aspectRatio,
+            cropRatio: cropRatio,
+            transform: transform,
+            deinterlace: deinterlace
+        )
+        onOptionsChosen(item, options)
+    }
+
+    /// Picks the starting audio and subtitles from `trackPreferences`. VLC
+    /// lists tracks a few at a time, so this runs again as they arrive, until
+    /// the item has played a few seconds or you pick a track yourself.
+    private func applyTrackPreferences(with engine: any PlaybackEngine) {
+        if case .track(let id) = trackPreferences.audioChoice(from: engine.audioTracks) {
+            engine.selectAudioTrack(id: id)
+        }
+        let audio = engine.audioTracks.first(where: \.isSelected)
+        switch trackPreferences.subtitleChoice(from: engine.subtitleTracks, audio: audio, appLanguage: appLanguage) {
+        case .keep:
+            break
+        case .off:
+            engine.selectSubtitleTrack(id: nil)
+        case .track(let id):
+            engine.selectSubtitleTrack(id: id)
+        }
     }
 
     // MARK: - Media info
@@ -631,7 +1128,8 @@ public final class PlaybackController {
     }
 
     private func prepareScrubPreviews() {
-        guard purpose == .main, state == .playing, let item = currentItem else { return }
+        // Discs have no single timeline to make frames from.
+        guard purpose == .main, state == .playing, let item = currentItem, item.disc == nil else { return }
         scrubPreviews.prepare(for: item, duration: duration, hasVideo: hasVideo)
     }
 
@@ -647,20 +1145,50 @@ public final class PlaybackController {
         factory.vlcVersionDescription
     }
 
-    private func handOff(to kind: EngineKind) async {
-        guard var item = currentItem, let oldEngine = engine, oldEngine.kind != kind else { return }
+    /// Starts the item again in a new engine of the same kind at the same
+    /// position, for options a running libVLC instance can't take (subtitle
+    /// style, encoding). Tracks come back exactly as they were.
+    private func restartEngine() async {
+        guard let kind = activeEngine else { return }
+        await handOff(to: kind, isRestart: true)
+    }
+
+    private func handOff(to kind: EngineKind, isRestart: Bool = false) async {
+        guard var item = currentItem, let oldEngine = engine, oldEngine.kind != kind || isRestart else { return }
         generation += 1
         let handOffGeneration = generation
+        if kind == .vlc {
+            // One VLC video output at a time (see `everyController`).
+            if purpose == .preview, Self.playerHasVideo {
+                await stop()
+                setState(.failed(PlaybackError(.engineFailure, "The player is showing a video.")))
+                return
+            }
+            if purpose == .main {
+                await Self.stopPreviews()
+                guard handOffGeneration == generation else { return }
+            }
+        }
 
         let resumeAt = currentTime
         let shouldPlay = isPlaying || state == .opening
         let selectedAudio = audioTracks.first(where: \.isSelected)
         let selectedSubtitle = subtitleTracks.first(where: \.isSelected)
-        let restore = TrackRestore(
+        var restore = TrackRestore(
             audioLanguage: selectedAudio?.languageCode,
             subtitleLanguage: selectedSubtitle?.languageCode,
             subtitlesOff: !subtitleTracks.isEmpty && selectedSubtitle == nil
         )
+        if isRestart {
+            restore.audioID = audioTracks.count > 1 ? selectedAudio?.id : nil
+            restore.subtitleID = selectedSubtitle?.id
+            restore.secondarySubtitleID = subtitleTracks.first(where: \.isSecondary)?.id
+        }
+        let previousReason = routingReason
+        // A disc starts again at its menu; go back to the title and time instead.
+        let discStart: (title: Int?, time: TimeInterval)? = item.disc != nil && !isShowingDiscMenu && resumeAt > 0.5
+            ? (currentTitleIndex, resumeAt)
+            : nil
 
         oldEngine.pause()
         await retireCurrentEngine(for: handOffGeneration)
@@ -668,15 +1196,22 @@ public final class PlaybackController {
 
         let newEngine = factory.makeEngine(kind)
         install(newEngine)
-        routingReason = .handoff
+        routingReason = isRestart ? previousReason : .handoff
         pendingTrackRestore = restore.isFinished ? nil : restore
-        item.startPosition = resumeAt > 0.5 ? resumeAt : nil
+        if item.disc != nil {
+            pendingDiscStart = discStart
+            requestedDiscTitle = false
+            item.startPosition = nil
+        } else {
+            item.startPosition = resumeAt > 0.5 ? resumeAt : nil
+        }
+        item = engineItem(item)
         item.externalSubtitleURLs += addedSubtitleURLs
         do {
             try await newEngine.load(item)
             guard handOffGeneration == generation else { return }
             newEngine.rate = rate
-            newEngine.volume = min(volume, capabilities.contains(.volumeBoost) ? 2 : 1)
+            newEngine.volume = engineVolume
             newEngine.isMuted = isMuted
             if audioDelay != 0, capabilities.contains(.audioDelay) {
                 newEngine.audioDelay = audioDelay
@@ -727,13 +1262,30 @@ public final class PlaybackController {
                     return
                 }
             }
-            currentTime = time
-            if let target = abLoop.jumpTarget(at: time) {
+            currentTime = max(0, time - segmentOffset)
+            if let end = currentItem?.segment?.end, time >= end, !reachedSegmentEnd {
+                // The segment is over; the session moves on (gaplessly within the file).
+                reachedSegmentEnd = true
+                notify(.endOfMedia)
+                return
+            }
+            if let target = abLoop.jumpTarget(at: currentTime) {
                 Task { await seek(to: target) }
+            }
+            // A few seconds in, the tracks are settled: preferences stop
+            // applying (a disc's menu doesn't count; its film starts them again).
+            if appliesTrackPreferences, hasPlayedCurrentItem, !isShowingDiscMenu,
+               currentTime > (currentItem?.startPosition ?? 0) + 3 {
+                appliesTrackPreferences = false
             }
             updatePictureInPicture(invalidate: false)
         case .durationChanged(let newDuration):
-            duration = newDuration
+            fileDuration = newDuration
+            if let segment = currentItem?.segment {
+                duration = segment.duration(fileDuration: newDuration)
+            } else {
+                duration = newDuration
+            }
             notify(.duration)
             updatePictureInPicture(invalidate: true)
             prepareScrubPreviews()
@@ -745,14 +1297,37 @@ public final class PlaybackController {
             refreshTracks()
         case .chaptersChanged:
             chapters = engine?.chapters ?? []
+        case .titlesChanged:
+            let previousTitle = currentTitleIndex
+            titles = engine?.titles ?? []
+            currentTitleIndex = engine?.currentTitleIndex
+            if isDisc, currentTitleIndex != previousTitle, currentTitle.map({ !$0.isMenu }) == true {
+                // A disc's film (or an extra) starts with tracks of its own:
+                // the ones chosen for this disc, or your languages.
+                if let chosen = chosenTracks {
+                    pendingTrackRestore = TrackRestore(
+                        audioLanguage: chosen.audioLanguage,
+                        subtitleLanguage: chosen.subtitleLanguage,
+                        subtitlesOff: chosen.subtitlesOff
+                    )
+                } else if !(currentItem?.isPreview ?? true) {
+                    appliesTrackPreferences = true
+                }
+            }
+            notify(.titles)
+            continueDiscStart()
         case .videoDimensionsChanged(let dimensions):
             videoDimensions = dimensions
             prepareScrubPreviews()
+        case .projectionChanged(let newProjection):
+            projection = newProjection
+            // Turning and magnifying don't apply to a sphere.
+            layoutVideoGeometry()
         case .metadataChanged(let newMetadata):
             var merged = newMetadata
-            if let item = currentItem, item.libraryID != nil {
+            if let item = currentItem, item.namesItself {
                 merged.title = item.title
-                merged.artist = item.artist
+                merged.artist = item.libraryID != nil ? item.artist : item.artist ?? merged.artist
                 merged.albumTitle = item.albumTitle ?? merged.albumTitle
             }
             if let itemArtwork {
@@ -778,6 +1353,26 @@ public final class PlaybackController {
         // After a hand-off, re-select the same languages. VLC announces
         // tracks one at a time, so keep trying until each one is satisfied.
         if var restore = pendingTrackRestore {
+            // Exact tracks first (a restart in the same kind of engine).
+            if let id = restore.audioID, let match = audioTracks.first(where: { $0.id == id }) {
+                if !match.isSelected {
+                    engine.selectAudioTrack(id: id)
+                }
+                restore.audioID = nil
+                restore.audioLanguage = nil
+            }
+            if let id = restore.subtitleID, let match = subtitleTracks.first(where: { $0.id == id }) {
+                if !match.isSelected {
+                    engine.selectSubtitleTrack(id: id)
+                }
+                restore.subtitleID = nil
+                restore.subtitleLanguage = nil
+            }
+            if restore.subtitleID == nil, let id = restore.secondarySubtitleID,
+               subtitleTracks.contains(where: { $0.id == id }) {
+                engine.selectSecondarySubtitleTrack(id: id)
+                restore.secondarySubtitleID = nil
+            }
             if let language = restore.audioLanguage,
                let match = audioTracks.first(where: { MediaTrack.languagesMatch($0.languageCode, language) }) {
                 if !match.isSelected {
@@ -794,6 +1389,10 @@ public final class PlaybackController {
                 restore.subtitlesOff = false
             }
             pendingTrackRestore = restore.isFinished ? nil : restore
+            audioTracks = engine.audioTracks
+            subtitleTracks = engine.subtitleTracks
+        } else if appliesTrackPreferences, !audioTracks.isEmpty {
+            applyTrackPreferences(with: engine)
             audioTracks = engine.audioTracks
             subtitleTracks = engine.subtitleTracks
         }
@@ -815,6 +1414,8 @@ public final class PlaybackController {
         audioTracks = []
         subtitleTracks = []
         chapters = []
+        titles = []
+        currentTitleIndex = nil
         videoDimensions = nil
         metadata = MediaMetadata()
         audioDelay = 0
@@ -828,6 +1429,15 @@ public final class PlaybackController {
         videoAdjustments = .neutral
         deinterlace = .automatic
         abLoop.clear()
+        projection = .flat
+        viewpoint = .straightAhead
+        reachedSegmentEnd = false
+        fileDuration = nil
+        if !transform.isIdentity || zoom.isZoomed {
+            transform = .identity
+            zoom = .none
+            layoutVideoGeometry()
+        }
     }
 
     private func notify(_ change: Change) {
@@ -883,6 +1493,8 @@ extension PlaybackController {
         isPlaying: Bool,
         dimensions: VideoDimensions? = nil,
         chapters: [Chapter] = [],
+        titles: [MediaTitle] = [],
+        currentTitleIndex: Int? = nil,
         audioTracks: [MediaTrack] = [],
         subtitleTracks: [MediaTrack] = [],
         artwork: Data? = nil
@@ -893,6 +1505,8 @@ extension PlaybackController {
         state = isPlaying ? .playing : .paused
         videoDimensions = dimensions
         self.chapters = chapters
+        self.titles = titles
+        self.currentTitleIndex = currentTitleIndex
         self.audioTracks = audioTracks
         self.subtitleTracks = subtitleTracks
         metadata = MediaMetadata(title: item.title, artist: item.artist, albumTitle: item.albumTitle, artworkData: artwork)
@@ -904,3 +1518,11 @@ extension PlaybackController {
 }
 #endif
 
+
+private extension PlaybackItem {
+    /// Library items and a cue sheet's tracks carry their own title, which
+    /// wins over what the engine reads from the file.
+    var namesItself: Bool {
+        libraryID != nil || segment != nil
+    }
+}

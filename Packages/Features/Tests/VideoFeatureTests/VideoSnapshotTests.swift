@@ -4,6 +4,7 @@ import DesignSystem
 import Foundation
 import ImageIO
 import MediaLibrary
+@testable import MusicFeature
 import NowPlaying
 import PlaybackCore
 import SwiftData
@@ -35,6 +36,13 @@ struct VideoSnapshotTests {
     @Test func carouselFeaturesNewMoviesAndShowsInProgress() throws {
         let fixture = try Fixture()
         let slides = HeroSlideBuilder.slides(for: .everything, library: fixture.library)
+        // Home is Listen Now too: the album comes third.
+        let album = try #require(slides.first { $0.title == "Night Swimming" })
+        #expect(album.kindLine == "Album \u{00B7} The Harbour Lights \u{00B7} Indie Pop \u{00B7} 2025")
+        #expect(album.overview == "9 songs, 32 min")
+        #expect(album.badge == "New")
+        #expect(slides.firstIndex { $0.title == "Night Swimming" } == 2)
+        #expect(HeroSlideBuilder.slides(for: .music, library: fixture.library).allSatisfy { $0.id.hasPrefix("album:") })
         let movie = try #require(slides.first { $0.title == "The Midnight Garden" })
         #expect(movie.badge == "New")
         #expect(movie.play?.title == "Play")
@@ -82,27 +90,46 @@ struct VideoSnapshotTests {
 
     // MARK: - Pictures
 
-    @Test func heroPages() async throws {
+    @Test func heroCarousel() async throws {
         let fixture = try Fixture()
         let slides = HeroSlideBuilder.slides(for: .everything, library: fixture.library)
-        try await fixture.warmArtwork(sizes: [2_000])
-        for slide in slides.prefix(2) {
-            let name = slide.id.hasPrefix("show:") ? "hero-wide-show" : "hero-wide-movie"
-            let page = HeroPage(slide: slide, style: .fullBleed, isCurrent: true, preview: HeroPreviewPlayer.shared, linksToDetails: false)
-                .overlay(alignment: .bottom) {
-                    PageDots(count: 5, index: 1) { _ in }
-                        .padding(.bottom, 640 * 0.12 + 4)
-                }
-                .frame(width: 1_280, height: 640)
-            try render(fixture.environment(page), name: name, scheme: .dark)
-            try render(fixture.environment(page), name: name + "-light", scheme: .light)
+        try await fixture.warmArtwork(sizes: [2_000, 300, 900])
+        // One picture per kind of page: the carousel draws its first slide.
+        for (prefix, name) in [("show:", "hero-wide-show"), ("movie:", "hero-wide-movie"), ("album:", "hero-wide-album")] {
+            guard let first = slides.firstIndex(where: { $0.id.hasPrefix(prefix) }) else {
+                Issue.record("No \(prefix) slide")
+                continue
+            }
+            let ordered = Array(slides[first...]) + Array(slides[..<first])
+            let carousel = HeroCarousel(slides: ordered, style: .fullBleed, width: 1_280)
+                .frame(width: 1_280)
+            try render(fixture.environment(carousel), name: name, scheme: .dark)
+            if prefix == "show:" {
+                try render(fixture.environment(carousel), name: name + "-light", scheme: .light)
+            }
         }
-        if let show = slides.first(where: { $0.id.hasPrefix("show:") }) {
-            let card = HeroPage(slide: show, style: .card, isCurrent: true, preview: HeroPreviewPlayer.shared, linksToDetails: false)
-                .frame(width: 393, height: HeroCarousel.height(for: 393, style: .card))
+        for (prefix, name) in [("show:", "hero-card"), ("album:", "hero-card-album")] {
+            guard let first = slides.firstIndex(where: { $0.id.hasPrefix(prefix) }) else { continue }
+            let ordered = Array(slides[first...]) + Array(slides[..<first])
+            let card = HeroCarousel(slides: ordered, style: .card, width: 393)
+                .frame(width: 393)
                 .padding(.vertical, 20)
-            try render(fixture.environment(card), name: "hero-card", scheme: .light)
+            try render(fixture.environment(card), name: name, scheme: .light)
         }
+    }
+
+    @Test func moviePage() async throws {
+        let fixture = try Fixture()
+        try await fixture.warmArtwork(sizes: [2_000])
+        let page = VideoDetailHeader(video: fixture.movie, isCompact: false, sidePadding: 48)
+            .frame(width: 1_200, height: 680, alignment: .bottomLeading)
+            .background {
+                DetailBackdrop(
+                    url: fixture.library.artworkURL(VideoDetailView.wideArtworkKey(fixture.movie), .large),
+                    fallbackURL: fixture.library.artworkURL(fixture.movie.posterArtworkKey, .large)
+                )
+            }
+        try render(fixture.environment(page), name: "movie-page", scheme: .dark)
     }
 
     @Test func showPage() async throws {
@@ -110,22 +137,26 @@ struct VideoSnapshotTests {
         try await fixture.warmArtwork(sizes: [2_000, 720])
         let next = fixture.library.nextUp(in: fixture.show)
         let episodes = fixture.show.orderedSeasons.first?.orderedEpisodes ?? []
+        let backdrop = DetailBackdrop(url: fixture.library.artworkURL(fixture.show.backdropKey, .large), fallbackURL: nil)
         let wide = VStack(alignment: .leading, spacing: 24) {
             ShowHero(show: fixture.show, next: next, hasStarted: true, seasonCount: 2, isCompact: false)
+                .frame(minHeight: 560, alignment: .bottom)
             HStack(alignment: .top, spacing: 18) {
                 ForEach(episodes.dropFirst(3).prefix(3)) { episode in
                     EpisodeCard(episode: episode, width: 340, highlight: episode.id == next?.video.id ? "Continue" : nil)
                 }
             }
-            .padding(.horizontal, Metrics.contentPadding)
+            .padding(.horizontal, 48)
         }
         .padding(.bottom, 24)
         .frame(width: 1_200)
+        .background { backdrop }
+        .environment(\.colorScheme, .dark)
         try render(fixture.environment(wide), name: "show-page", scheme: .dark)
-        try render(fixture.environment(wide), name: "show-page-light", scheme: .light)
 
         let compact = VStack(alignment: .leading, spacing: 20) {
             ShowHero(show: fixture.show, next: next, hasStarted: true, seasonCount: 2, isCompact: true)
+                .frame(minHeight: 480, alignment: .bottom)
             if let current = next?.video {
                 EpisodeCard(episode: current, width: 280, highlight: "Continue")
                     .padding(.horizontal, Metrics.contentPadding)
@@ -133,6 +164,8 @@ struct VideoSnapshotTests {
         }
         .padding(.bottom, 20)
         .frame(width: 393)
+        .background { backdrop }
+        .environment(\.colorScheme, .dark)
         try render(fixture.environment(compact), name: "show-page-compact", scheme: .dark)
     }
 
@@ -150,6 +183,102 @@ struct VideoSnapshotTests {
         let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, image, nil)
         #expect(CGImageDestinationFinalize(destination))
+    }
+}
+
+// MARK: - Music charts
+
+extension VideoSnapshotTests {
+    /// The music lists as charts: rows with album and length columns, an
+    /// album's numbered tracks, Top Songs, genre tiles and an artist.
+    @Test func musicCharts() async throws {
+        let fixture = try Fixture()
+        let library = fixture.library
+        let context = library.context
+        let album = try #require(try context.fetch(FetchDescriptor<Album>(predicate: #Predicate { $0.title == "Night Swimming" })).first)
+        let tracks = album.orderedTracks
+        let artist = Artist()
+        artist.name = album.artistName
+        artist.artworkKey = album.artworkKey
+        context.insert(artist)
+        album.artist = artist
+        let genres = ["Indie Pop", "Electronic", "Jazz", "Hip-Hop"].map { name in
+            let genre = Genre()
+            genre.name = name
+            genre.key = name.lowercased()
+            context.insert(genre)
+            return genre
+        }
+        for (index, track) in tracks.enumerated() {
+            let file = MediaFile()
+            file.fileName = "\(track.title).flac"
+            file.fileExtension = "flac"
+            file.isLossless = index % 3 == 0
+            file.duration = track.duration
+            context.insert(file)
+            track.file = file
+            track.artist = artist
+            track.genre = genres[0]
+        }
+        try context.save()
+        let sizes: [(ArtworkStore.Variant, Int)] = [(.thumbnail, 150), (.grid, 300), (.grid, 450)]
+        if let key = album.artworkKey {
+            for (variant, size) in sizes {
+                if let url = library.artworkURL(key, variant) {
+                    _ = await ArtworkDecoder.decode(contentsOf: url, maxPixelSize: size)
+                }
+            }
+        }
+
+        // Songs, as the wide list shows them.
+        let songs = VStack(spacing: 2) {
+            ChartColumnHeader(showsAlbum: true)
+            ForEach(Array(tracks.prefix(6).enumerated()), id: \.element.id) { index, track in
+                ChartTrackRow(track: track, showsAlbum: true, isCurrent: index == 1, isStriped: index.isMultiple(of: 2))
+            }
+        }
+        .padding(20)
+        .frame(width: 900)
+        try render(fixture.environment(songs), name: "music-songs-wide", scheme: .dark)
+        try render(fixture.environment(songs), name: "music-songs-wide-light", scheme: .light)
+
+        // On an iPhone.
+        let compact = VStack(spacing: 2) {
+            ForEach(Array(tracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+                ChartTrackRow(track: track, isCurrent: index == 0, isStriped: index.isMultiple(of: 2))
+            }
+        }
+        .padding(12)
+        .frame(width: 393)
+        try render(fixture.environment(compact), name: "music-songs-compact", scheme: .dark)
+
+        // An album's tracks: numbers, no artwork.
+        let albumRows = VStack(spacing: 2) {
+            ForEach(Array(tracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+                ChartTrackRow(track: track, number: track.trackNumber ?? index + 1, showsArtwork: false, showsArtist: false, isCurrent: index == 2, isStriped: index.isMultiple(of: 2))
+            }
+        }
+        .padding(20)
+        .frame(width: 700)
+        try render(fixture.environment(albumRows), name: "music-album-tracks", scheme: .dark)
+
+        let top = TopSongsChart(tracks: Array(tracks.prefix(6)), isCurrent: { _ in false }, onPlay: { _ in })
+            .padding(20)
+            .frame(width: 900)
+        try render(fixture.environment(top), name: "music-top-songs", scheme: .dark)
+
+        let tiles = VStack(alignment: .leading, spacing: 24) {
+            HStack(spacing: 18) {
+                ForEach(genres) { genre in
+                    GenreTile(genre: genre)
+                        .frame(width: 240)
+                }
+            }
+            ArtistTile(artist: artist)
+                .frame(width: 170)
+        }
+        .padding(20)
+        try render(fixture.environment(tiles), name: "music-genres-artists", scheme: .dark)
     }
 }
 
@@ -232,6 +361,27 @@ private struct Fixture {
                 episode.season = season
                 context.insert(episode)
             }
+        }
+        let album = Album()
+        album.title = "Night Swimming"
+        album.sortTitle = "night swimming"
+        album.artistName = "The Harbour Lights"
+        album.sortArtistName = "harbour lights"
+        album.year = 2025
+        album.genreName = "Indie Pop"
+        album.artworkKey = art(1_000, 1_000, 6)
+        album.dateAdded = Date.now.addingTimeInterval(-86_400)
+        context.insert(album)
+        for number in 1...9 {
+            let track = Track()
+            track.title = "Song \(number)"
+            track.sortTitle = track.title.lowercased()
+            track.artistName = album.artistName
+            track.albumTitle = album.title
+            track.trackNumber = number
+            track.duration = 214
+            track.album = album
+            context.insert(track)
         }
         try context.save()
 

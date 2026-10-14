@@ -140,6 +140,23 @@ public final class LibraryManager {
         save()
         loadWatchStates()
         scanAll()
+        retakeSquashedFramesIfNeeded()
+    }
+
+    /// Version 2 of frames taken from videos (see `clearSquashedFrames`).
+    static let frameVersionKey = "library.frameVersion"
+
+    private func retakeSquashedFramesIfNeeded() {
+        guard UserDefaults.standard.integer(forKey: Self.frameVersionKey) < 2 else { return }
+        Task {
+            let indexer = await indexer()
+            let cleared = (try? await indexer.clearSquashedFrames()) ?? 0
+            UserDefaults.standard.set(2, forKey: Self.frameVersionKey)
+            if cleared > 0 {
+                bumpRevision()
+            }
+            enqueue(.thumbnails)
+        }
     }
 
     /// iOS: rescans when the app comes back to the foreground, at most every few minutes.
@@ -321,6 +338,21 @@ public final class LibraryManager {
             if albums.count == limit { break }
         }
         return albums
+    }
+
+    /// Your most played songs, most plays first: the Songs chart.
+    public func mostPlayedTracks(limit: Int = 10) -> [Track] {
+        var descriptor = FetchDescriptor<PlaybackRecord>(
+            predicate: #Predicate { $0.playCount > 0 },
+            sortBy: [SortDescriptor(\.playCount, order: .reverse), SortDescriptor(\.lastPlayedDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit * 4
+        guard let records = try? context.fetch(descriptor), !records.isEmpty else { return [] }
+        let keys = records.map(\.contentKey)
+        let audio = PlaybackItem.Kind.audio.rawValue
+        let files = (try? context.fetch(FetchDescriptor<MediaFile>(predicate: #Predicate { keys.contains($0.contentKey) && $0.kindRaw == audio }))) ?? []
+        let filesByKey = Dictionary(files.map { ($0.contentKey, $0) }, uniquingKeysWith: { first, _ in first })
+        return Array(keys.lazy.compactMap { filesByKey[$0]?.track }.filter(\.isAvailable).prefix(limit))
     }
 
     public func playCount(for file: MediaFile) -> Int {

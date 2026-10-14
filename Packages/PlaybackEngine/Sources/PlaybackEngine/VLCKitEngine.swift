@@ -33,6 +33,8 @@ final class VLCKitEngine: PlaybackEngine {
     private(set) var audioTracks: [MediaTrack] = []
     private(set) var subtitleTracks: [MediaTrack] = []
     private(set) var chapters: [Chapter] = []
+    private(set) var titles: [MediaTitle] = []
+    private(set) var currentTitleIndex: Int?
     private(set) var videoDimensions: VideoDimensions?
 
     private let continuation: AsyncStream<PlaybackEvent>.Continuation
@@ -77,6 +79,14 @@ final class VLCKitEngine: PlaybackEngine {
     var deinterlace: DeinterlaceMode = .automatic {
         didSet { applyDeinterlace() }
     }
+    var deinterlaceFilter: DeinterlaceFilter = .standard {
+        didSet { applyDeinterlace() }
+    }
+    /// 360° videos are projected by libVLC; this is where you're looking.
+    var viewpoint: Viewpoint = .straightAhead {
+        didSet { applyViewpoint() }
+    }
+    private(set) var projection: VideoProjection = .flat
     var stereoMode: StereoMode = .automatic {
         didSet { applyStereoMode() }
     }
@@ -86,6 +96,15 @@ final class VLCKitEngine: PlaybackEngine {
     var subtitleScale: Float = 1 {
         didSet { applySubtitleScale() }
     }
+    /// Applied through the libVLC instance's options when the engine is
+    /// created (`EngineConfiguration.subtitleStyle`); kept for the protocol.
+    var subtitleStyle: SubtitleStyle = .standard
+    /// The second subtitle track shown with the first, if any.
+    private var secondarySubtitleID: String?
+    /// The subtitle tracks last asked for. VLC makes a selection on its
+    /// input thread, so for a moment its track list still reports the old
+    /// one; until it catches up (or two seconds pass) the request is shown.
+    private var requestedSubtitles: (main: String?, secondary: String?, until: Date)?
 
     /// Engines whose player hadn't confirmed its stop when they were shut down.
     /// Releasing a running VLCMediaPlayer would block the main thread while
@@ -181,8 +200,13 @@ final class VLCKitEngine: PlaybackEngine {
         duration = nil
         audioTracks = []
         subtitleTracks = []
+        secondarySubtitleID = nil
+        requestedSubtitles = nil
         chapters = []
+        titles = []
+        currentTitleIndex = nil
         videoDimensions = nil
+        projection = .flat
         hasPlayedCurrentMedia = false
         stopRequested = false
         lastArtworkIdentity = nil
@@ -231,11 +255,43 @@ final class VLCKitEngine: PlaybackEngine {
     }
 
     func selectSubtitleTrack(id: MediaTrack.ID?) {
+        // Choosing the main track (or none) also drops the second one.
+        secondarySubtitleID = nil
         if let id, let track = player.textTracks.first(where: { $0.trackId == id }) {
             track.isSelectedExclusively = true
+            requestedSubtitles = (id, nil, Date.now.addingTimeInterval(2))
         } else {
             player.deselectAllTextTracks()
+            requestedSubtitles = (nil, nil, Date.now.addingTimeInterval(2))
         }
+        refreshTracks()
+    }
+
+    /// libVLC 4 shows two subtitle tracks at once: the second is selected
+    /// alongside the first rather than instead of it.
+    func selectSecondarySubtitleTrack(id: MediaTrack.ID?) {
+        let tracks = player.textTracks
+        // The main track as last asked for, or as shown.
+        let main: String?
+        if let request = requestedSubtitles, Date.now < request.until {
+            main = request.main
+        } else {
+            main = subtitleTracks.first { $0.isSelected && !$0.isSecondary }?.id
+        }
+        var chosen = tracks.filter { $0.trackId == main }
+        secondarySubtitleID = nil
+        if let id, id != main, let track = tracks.first(where: { $0.trackId == id }) {
+            chosen.append(track)
+            secondarySubtitleID = id
+        }
+        // Both at once: VLCKit's per-track `isSelected` reads VLC's current
+        // selection, which may not include a main track chosen a moment ago.
+        if chosen.isEmpty {
+            player.deselectAllTextTracks()
+        } else {
+            player.selectTextTracks(chosen)
+        }
+        requestedSubtitles = (main, secondarySubtitleID, Date.now.addingTimeInterval(2))
         refreshTracks()
     }
 
@@ -260,6 +316,33 @@ final class VLCKitEngine: PlaybackEngine {
 
     func selectChapter(at index: Int) {
         player.currentChapterIndex = Int32(index)
+    }
+
+    // MARK: - Titles and disc menus
+
+    func selectTitle(at index: Int) {
+        player.currentTitleIndex = Int32(index)
+    }
+
+    /// The arrows and Select reach libVLC's DVD and Blu-ray navigation. A
+    /// DVD's menu is a title of its own ("DVD Menu"; selecting it calls the
+    /// root menu), as is a Blu-ray's top menu; the pop-up menu is a command.
+    func navigate(_ action: DiscNavigation) {
+        switch action {
+        case .up: player.perform(.up)
+        case .down: player.perform(.down)
+        case .left: player.perform(.left)
+        case .right: player.perform(.right)
+        case .activate: player.perform(.activate)
+        case .menu:
+            if let menu = titles.first(where: \.isMenu) {
+                player.currentTitleIndex = Int32(menu.id)
+            } else {
+                player.currentTitleDescription?.navigatePopup()
+            }
+        case .popUpMenu:
+            player.currentTitleDescription?.navigatePopup()
+        }
     }
 
     // MARK: - Video output
@@ -358,6 +441,9 @@ final class VLCKitEngine: PlaybackEngine {
             refreshVideoDimensions()
         case .chapters:
             refreshChapters()
+        case .titles:
+            refreshTitles()
+            refreshChapters()
         case .metadata:
             publishMetadata()
         }
@@ -376,6 +462,7 @@ final class VLCKitEngine: PlaybackEngine {
             setState(.playing)
             updateDuration(milliseconds: nil)
             refreshTracks()
+            refreshTitles()
             refreshChapters()
             refreshVideoDimensions()
             publishMetadata()
@@ -437,7 +524,26 @@ final class VLCKitEngine: PlaybackEngine {
 
     private func refreshTracks() {
         let audio = player.audioTracks.map { Self.makeTrack($0, kind: .audio) }
-        let subtitles = player.textTracks.map { Self.makeTrack($0, kind: .subtitle) }
+        var subtitles = player.textTracks.map { Self.makeTrack($0, kind: .subtitle) }
+        if let request = requestedSubtitles {
+            let reported = Set(subtitles.filter(\.isSelected).map(\.id))
+            let wanted = Set([request.main, request.secondary].compactMap { $0 })
+            if reported == wanted || Date.now > request.until {
+                requestedSubtitles = nil
+            } else {
+                for index in subtitles.indices {
+                    subtitles[index].isSelected = wanted.contains(subtitles[index].id)
+                }
+            }
+        }
+        if let secondary = secondarySubtitleID {
+            if let index = subtitles.firstIndex(where: { $0.id == secondary && $0.isSelected }) {
+                subtitles[index].isSelected = false
+                subtitles[index].isSecondary = true
+            } else {
+                secondarySubtitleID = nil
+            }
+        }
         guard audio != audioTracks || subtitles != subtitleTracks else { return }
         audioTracks = audio
         subtitleTracks = subtitles
@@ -459,7 +565,41 @@ final class VLCKitEngine: PlaybackEngine {
         continuation.yield(.chaptersChanged)
     }
 
+    private func refreshTitles() {
+        let newTitles = player.titleDescriptions.map { description in
+            MediaTitle(
+                id: Int(description.titleIndex),
+                name: description.name,
+                duration: Self.seconds(from: description.durationTime),
+                isMenu: description.isMenu || description.titleType.contains(.menu),
+                isInteractive: description.titleType.contains(.interactive),
+                chapterCount: description.chapterDescriptions.count
+            )
+        }
+        let index = Int(player.currentTitleIndex)
+        let current: Int? = index >= 0 ? index : nil
+        guard newTitles != titles || current != currentTitleIndex else { return }
+        titles = newTitles
+        currentTitleIndex = current
+        continuation.yield(.titlesChanged)
+    }
+
+    /// 360° or flat, from the selected video track.
+    private func refreshProjection() {
+        let tracks = player.videoTracks
+        let track = tracks.first(where: \.isSelected) ?? tracks.first
+        let value: VideoProjection = switch track?.video?.projection {
+        case .equiRectangular: .equirectangular
+        case .cubemapLayoutStandard: .cubeMap
+        default: .flat
+        }
+        guard value != projection else { return }
+        projection = value
+        continuation.yield(.projectionChanged(value))
+    }
+
     private func refreshVideoDimensions() {
+        refreshProjection()
         let size = player.videoSize
         let dimensions: VideoDimensions? = size.width > 0 && size.height > 0
             ? VideoDimensions(width: Int(size.width), height: Int(size.height))
@@ -543,6 +683,7 @@ final class VLCEventBridge: NSObject, VLCMediaPlayerDelegate, VLCMediaDelegate, 
         case time
         case tracks
         case chapters
+        case titles
         case metadata
     }
 
@@ -603,7 +744,11 @@ final class VLCEventBridge: NSObject, VLCMediaPlayerDelegate, VLCMediaDelegate, 
     }
 
     func mediaPlayerTitleListChanged(_ aNotification: Notification) {
-        continuation.yield(.chapters)
+        continuation.yield(.titles)
+    }
+
+    func mediaPlayerTitleSelectionChanged(_ aNotification: Notification) {
+        continuation.yield(.titles)
     }
 
     // MARK: VLCMediaDelegate

@@ -23,6 +23,8 @@ public struct MediaTrack: Identifiable, Hashable, Sendable {
     public var isForced: Bool
     /// Subtitles for the deaf and hard of hearing (or closed captions).
     public var isSDH: Bool
+    /// The second of two subtitle tracks shown at once (VLC).
+    public var isSecondary: Bool = false
 
     public init(
         id: String,

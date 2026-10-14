@@ -1,6 +1,7 @@
 import AVKit
 import DesignSystem
 import MediaPlayer
+import NowPlaying
 import PlaybackCore
 import PlaybackEngine
 import SwiftUI
@@ -301,6 +302,12 @@ struct SpeedMenu: View {
 struct VolumeControl: View {
     let controller: PlaybackController
     var sliderWidth: CGFloat = 84
+    @AppStorage(PlaybackPreferences.allowsVolumeBoostKey) private var allowsBoost = false
+
+    /// 100%, or 200% with Settings ▸ Playback ▸ Volume Boost.
+    private var maximum: Double {
+        allowsBoost ? Double(VolumeLimits.boosted) : Double(VolumeLimits.normal)
+    }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -309,18 +316,28 @@ struct VolumeControl: View {
             }
             CapsuleSlider(
                 value: Binding(
-                    get: { controller.isMuted ? 0 : Double(min(controller.volume, 1)) },
+                    get: { controller.isMuted ? 0 : min(Double(controller.volume), maximum) },
                     set: { newValue in
                         if controller.isMuted { controller.setMuted(false) }
-                        controller.setVolume(Float(newValue))
+                        setVolume(Float(newValue))
                     }
                 ),
-                in: 0...1,
+                in: 0...maximum,
                 label: "Volume",
                 step: 0.1
             )
-            .frame(width: sliderWidth)
+            .frame(width: allowsBoost ? sliderWidth * 1.4 : sliderWidth)
+            .help(allowsBoost ? "Volume \(VolumeLimits.percent(controller.volume))" : "Volume")
             .padding(.trailing, 10)
+        }
+    }
+
+    /// Above 100%, the item moves to VLC, which can boost.
+    private func setVolume(_ value: Float) {
+        if value > VolumeLimits.normal {
+            Task { await controller.setBoostedVolume(value) }
+        } else {
+            controller.setVolume(value)
         }
     }
 

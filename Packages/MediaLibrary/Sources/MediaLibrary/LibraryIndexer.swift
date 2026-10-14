@@ -29,6 +29,10 @@ struct FoundFile: Sendable {
     var size: Int64
     var modificationDate: Date
     var kind: PlaybackItem.Kind
+    /// A DVD or Blu-ray: `url` is the folder holding VIDEO_TS or BDMV (or,
+    /// when the source is that folder, VIDEO_TS or BDMV itself), or the image.
+    var disc: DiscKind?
+    var isDiscFolder: Bool { disc != nil && !DiscLayout.imageExtensions.contains(url.pathExtension.lowercased()) }
 }
 
 /// What reading a file produced, ready to merge into the model.
@@ -91,9 +95,20 @@ public actor LibraryIndexer {
             }
         }
         let foundPaths = Set(found.map(\.relativePath))
-        for (path, file) in existing where !foundPaths.contains(path) && file.isAvailable {
-            file.isAvailable = false
-            summary.missing += 1
+        // A source that is a disc's VIDEO_TS or BDMV: everything listed before is part of the disc.
+        let sourceIsInsideDisc = !isSingleFile && DiscLayout.structureFolders.contains(root.lastPathComponent.uppercased())
+        var removedDiscParts = false
+        for (path, file) in existing where !foundPaths.contains(path) {
+            if DiscLayout.canPlayDiscs, sourceIsInsideDisc || Self.isInsideDisc(path) {
+                // A VOB or M2TS listed before Coreplay knew discs: the disc
+                // around it is one video now.
+                modelContext.delete(file)
+                existing[path] = nil
+                removedDiscParts = true
+            } else if file.isAvailable {
+                file.isAvailable = false
+                summary.missing += 1
+            }
         }
         try modelContext.save()
 
@@ -101,7 +116,7 @@ public actor LibraryIndexer {
         let videoGrouper = VideoGrouper(context: modelContext)
         let folderArtwork = FolderArtworkCache()
         let videoFolders = VideoFolderCache()
-        var touchedVideos = false
+        var touchedVideos = removedDiscParts
         progress(ScanProgress(sourceID: sourceID, processed: 0, total: pending.count))
 
         var index = 0
@@ -219,7 +234,8 @@ public actor LibraryIndexer {
             existing[found.relativePath] = file
         }
         file.fileName = found.url.lastPathComponent
-        file.fileExtension = found.url.pathExtension.lowercased()
+        // A disc folder has no extension of its own: "dvd" or "bluray" marks it.
+        file.fileExtension = found.isDiscFolder ? found.disc?.rawValue ?? "" : found.url.pathExtension.lowercased()
         file.kindRaw = found.kind.rawValue
         file.fileSize = found.size
         file.modificationDate = found.modificationDate
@@ -318,6 +334,28 @@ public actor LibraryIndexer {
         track.artworkKey = parsed.artworkKey
     }
 
+    /// A disc folder's fingerprint: its VIDEO_TS.IFO's or index.bdmv's, so
+    /// its history follows it when the folder moves.
+    static func discContentKey(_ file: FoundFile) -> String? {
+        guard let kind = file.disc else { return nil }
+        let marker: URL?
+        switch kind {
+        case .dvd:
+            let videoTS = file.url.lastPathComponent.uppercased() == "VIDEO_TS" ? file.url : DiscLayout.entries(of: file.url)["VIDEO_TS"]
+            marker = videoTS.flatMap { DiscLayout.entries(of: $0)["VIDEO_TS.IFO"] }
+        case .bluray:
+            let bdmv = file.url.lastPathComponent.uppercased() == "BDMV" ? file.url : DiscLayout.entries(of: file.url)["BDMV"]
+            marker = bdmv.flatMap { DiscLayout.entries(of: $0)["INDEX.BDMV"] }
+        }
+        guard let marker, let source = try? FileByteSource(url: marker), let key = try? ContentKey.compute(source) else { return nil }
+        return "\(kind.rawValue):\(key)#\(file.size)"
+    }
+
+    /// `true` for a path inside a disc's VIDEO_TS or BDMV.
+    static func isInsideDisc(_ relativePath: String) -> Bool {
+        relativePath.split(separator: "/").dropLast().contains { DiscLayout.structureFolders.contains($0.uppercased()) }
+    }
+
     // MARK: - Reading files (off the actor)
 
     private static let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
@@ -325,13 +363,28 @@ public actor LibraryIndexer {
     static func enumerate(_ root: URL) -> [FoundFile] {
         let base = root.resolvingSymlinksInPath().standardizedFileURL
         let baseComponents = base.pathComponents
+        // A source that is a disc's VIDEO_TS or BDMV folder is one video.
+        if DiscLayout.canPlayDiscs, DiscLayout.structureFolders.contains(base.lastPathComponent.uppercased()), let disc = DiscLayout.disc(at: base) {
+            return foundDisc(disc.kind, structureFolder: base, url: base, relativePath: "").map { [$0] } ?? []
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: base,
-            includingPropertiesForKeys: Array(resourceKeys),
+            includingPropertiesForKeys: Array(resourceKeys) + [.isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
         var found: [FoundFile] = []
         while let url = enumerator.nextObject() as? URL {
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                // A DVD's VIDEO_TS or a Blu-ray's BDMV: the folder around it
+                // is one video, and nothing inside is listed on its own.
+                if DiscLayout.canPlayDiscs, DiscLayout.structureFolders.contains(url.lastPathComponent.uppercased()) {
+                    enumerator.skipDescendants()
+                    if let file = foundDisc(inStructureFolder: url, relativeTo: baseComponents) {
+                        found.append(file)
+                    }
+                }
+                continue
+            }
             if let file = Self.found(url, relativeTo: baseComponents) {
                 found.append(file)
             }
@@ -343,6 +396,52 @@ public actor LibraryIndexer {
         Self.found(url, relativeTo: nil).map { [$0] } ?? []
     }
 
+    /// The disc a VIDEO_TS or BDMV folder belongs to (`nil` for AUDIO_TS and
+    /// the rest, and for folders that only look like one).
+    private static func foundDisc(inStructureFolder folder: URL, relativeTo baseComponents: [String]) -> FoundFile? {
+        let kind: DiscKind
+        switch folder.lastPathComponent.uppercased() {
+        case "VIDEO_TS" where DiscLayout.entries(of: folder)["VIDEO_TS.IFO"] != nil:
+            kind = .dvd
+        case "BDMV" where DiscLayout.entries(of: folder)["INDEX.BDMV"] != nil:
+            kind = .bluray
+        default:
+            return nil
+        }
+        let root = folder.deletingLastPathComponent().standardizedFileURL
+        let components = root.pathComponents
+        guard components.count >= baseComponents.count,
+              Array(components.prefix(baseComponents.count)) == baseComponents else { return nil }
+        let relativePath = components.dropFirst(baseComponents.count).joined(separator: "/")
+        return foundDisc(kind, structureFolder: folder, url: root, relativePath: relativePath)
+    }
+
+    /// One video for a disc folder. Its size and date are those of the files
+    /// in its VIDEO_TS, or in BDMV and the folders in it (STREAM holds a
+    /// Blu-ray's video), so a changed disc is read again.
+    private static func foundDisc(_ kind: DiscKind, structureFolder: URL, url: URL, relativePath: String) -> FoundFile? {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey]
+        func contents(of folder: URL) -> [URL]? {
+            try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+        }
+        guard let top = contents(of: structureFolder) else { return nil }
+        var size: Int64 = 0
+        var date = Date.distantPast
+        func add(_ item: URL) {
+            let values = try? item.resourceValues(forKeys: keys)
+            size += Int64(values?.fileSize ?? 0)
+            date = max(date, values?.contentModificationDate ?? .distantPast)
+        }
+        for item in top {
+            if (try? item.resourceValues(forKeys: keys))?.isDirectory == true {
+                (contents(of: item) ?? []).forEach(add)
+            } else {
+                add(item)
+            }
+        }
+        return FoundFile(url: url, relativePath: relativePath, size: size, modificationDate: date, kind: .video, disc: kind)
+    }
+
     static func found(_ url: URL, relativeTo baseComponents: [String]?) -> FoundFile? {
         let ext = url.pathExtension.lowercased()
         guard !skippedExtensions.contains(ext) else { return nil }
@@ -350,6 +449,13 @@ public actor LibraryIndexer {
         guard kind == .audio || kind == .video,
               let values = try? url.resourceValues(forKeys: resourceKeys),
               values.isRegularFile == true else { return nil }
+        // Disc images: DVDs and Blu-rays only, not software or data discs.
+        var disc: DiscKind?
+        if DiscLayout.imageExtensions.contains(ext) {
+            // Images play only with a VLCKit built with disc support.
+            guard DiscLayout.canPlayDiscs, let image = DiscLayout.disc(at: url) else { return nil }
+            disc = image.kind
+        }
         var relativePath = ""
         if let baseComponents {
             let components = url.standardizedFileURL.pathComponents
@@ -362,7 +468,8 @@ public actor LibraryIndexer {
             relativePath: relativePath,
             size: Int64(values.fileSize ?? 0),
             modificationDate: values.contentModificationDate ?? .distantPast,
-            kind: kind
+            kind: kind,
+            disc: disc
         )
     }
 
@@ -370,12 +477,15 @@ public actor LibraryIndexer {
         var tags: AudioTags?
         var contentKey = ""
         var video: ParsedVideo?
-        let source = try? FileByteSource(url: file.url)
+        let source = file.isDiscFolder ? nil : try? FileByteSource(url: file.url)
         if let source {
             contentKey = (try? ContentKey.compute(source)) ?? ""
             if file.kind == .audio {
                 tags = try? TagReader.read(source)
             }
+        }
+        if file.isDiscFolder {
+            contentKey = discContentKey(file) ?? ""
         }
         if file.kind == .video {
             video = parseVideo(file, source: source, hint: hint, artworkStore: artworkStore, folders: videoFolders)

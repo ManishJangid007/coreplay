@@ -51,6 +51,10 @@ public struct AlbumsView: View {
 
 private struct AlbumsQueryView: View {
     @Environment(LibraryManager.self) private var library
+    @Environment(\.libraryHero) private var libraryHero
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @Query private var albums: [Album]
     @State private var opened: Album?
     let layout: LibraryLayout
@@ -87,14 +91,27 @@ private struct AlbumsQueryView: View {
                 }
             } else {
                 ScrollView {
-                    AlbumGrid(albums: albums)
-                        .padding(Metrics.contentPadding)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Music's big carousel: what's new and what you've been playing.
+                        libraryHero?.make(.music, isCompact)
+                        AlbumGrid(albums: albums)
+                            .padding(Metrics.contentPadding)
+                    }
                 }
+                .heroPageChrome(libraryHero != nil && !isCompact)
             }
         }
         .navigationDestination(item: $opened) { album in
             AlbumDetailView(album: album)
         }
+    }
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
     }
 }
 
@@ -210,6 +227,17 @@ public struct AlbumDetailView: View {
                 .listRowSeparator(.hidden)
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(alignment: .top) {
+            // A wash of the cover behind the header, fading into the page.
+            FilledArtwork(url: library.artworkURL(album.artworkKey, .large), maxPixelSize: 600)
+                .frame(height: 460)
+                .blur(radius: 70)
+                .opacity(0.55)
+                .mask(LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom))
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+        }
         .navigationTitle(album.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -228,7 +256,65 @@ public struct AlbumDetailView: View {
         }
     }
 
+    /// Beside the cover when there's room, as on Music for the Mac and iPad;
+    /// stacked under it on an iPhone.
     private func header(_ tracks: [Track]) -> some View {
+        ViewThatFits(in: .horizontal) {
+            wideHeader(tracks)
+                .frame(minWidth: 660)
+            compactHeader(tracks)
+        }
+    }
+
+    private func wideHeader(_ tracks: [Track]) -> some View {
+        HStack(alignment: .bottom, spacing: 28) {
+            ArtworkView(url: library.artworkURL(album.artworkKey, .large), shape: .square, maxPixelSize: 900, placeholderSymbol: "music.note")
+                .frame(width: 250, height: 250)
+                .artworkShadow()
+            VStack(alignment: .leading, spacing: 8) {
+                Text(album.isCompilation ? "COMPILATION" : "ALBUM")
+                    .font(.caption.weight(.heavy))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+                Text(album.title)
+                    .font(.system(size: 40, weight: .heavy))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
+                artistLink
+                    .font(.title3.weight(.semibold))
+                if let details = details(tracks) {
+                    Text("\(details) \u{00B7} \(MusicFormat.summary(songs: tracks.count, seconds: album.totalDuration))")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                }
+                PlayShuffleButtons(
+                    onPlay: { playback.play(tracks, shuffled: false) },
+                    onShuffle: { playback.shuffle(tracks) }
+                )
+                .frame(maxWidth: 340)
+                .padding(.top, 8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var artistLink: some View {
+        if let artist = album.artist {
+            NavigationLink(value: artist) {
+                Text(album.artistName)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(album.artistName)
+                .foregroundStyle(Color.accentColor)
+        }
+    }
+
+    private func compactHeader(_ tracks: [Track]) -> some View {
         VStack(spacing: 14) {
             ArtworkView(url: library.artworkURL(album.artworkKey, .large), shape: .square, maxPixelSize: 900, placeholderSymbol: "music.note")
                 .frame(maxWidth: 300)
@@ -275,17 +361,23 @@ public struct AlbumDetailView: View {
 
     @ViewBuilder
     private func rows(_ tracks: [Track], all: [Track]) -> some View {
-        ForEach(tracks) { track in
+        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
             Button {
                 playback.play(all, startingAt: track)
             } label: {
-                AlbumTrackRow(
+                ChartTrackRow(
                     track: track,
+                    number: track.trackNumber ?? index + 1,
+                    showsArtwork: false,
                     showsArtist: album.isCompilation || track.artistName.localizedCaseInsensitiveCompare(album.artistName) != .orderedSame,
-                    isCurrent: playback.isCurrent(track)
+                    isCurrent: playback.isCurrent(track),
+                    isStriped: index.isMultiple(of: 2)
                 )
             }
             .buttonStyle(.plain)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 12))
             .disabled(!track.isAvailable)
             .contextMenu {
                 TrackMenuItems(tracks: [track], onEditInfo: { editingTrack = track }, showsGoToAlbum: false)
@@ -328,50 +420,5 @@ public struct AlbumDetailView: View {
     private func discs(_ tracks: [Track]) -> [Disc] {
         let grouped = Dictionary(grouping: tracks) { $0.discNumber ?? 1 }
         return grouped.keys.sorted().map { Disc(number: $0, tracks: grouped[$0] ?? []) }
-    }
-}
-
-/// A row on an album page: number, title, duration.
-struct AlbumTrackRow: View {
-    let track: Track
-    let showsArtist: Bool
-    let isCurrent: Bool
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Group {
-                if isCurrent {
-                    Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative)
-                        .foregroundStyle(Color.accentColor)
-                        .accessibilityLabel(Text("Now playing"))
-                } else {
-                    Text(track.trackNumber.map(String.init) ?? "")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .font(.body.monospacedDigit())
-            .frame(minWidth: 24, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .lineLimit(1)
-                if showsArtist {
-                    Text(track.artistName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 8)
-            Text(MusicFormat.duration(track.duration))
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .opacity(track.isAvailable ? 1 : 0.45)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(track.isAvailable ? "" : "Not available"))
     }
 }

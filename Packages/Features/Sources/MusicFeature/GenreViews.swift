@@ -4,7 +4,7 @@ import NowPlaying
 import SwiftData
 import SwiftUI
 
-/// Genres from the files' tags.
+/// Genres from the files' tags, as coloured tiles with their covers.
 public struct GenresView: View {
     @Query(sort: \Genre.key) private var genres: [Genre]
 
@@ -15,17 +15,17 @@ public struct GenresView: View {
             if genres.isEmpty {
                 MusicEmptyState()
             } else {
-                List(genres) { genre in
-                    NavigationLink(value: genre) {
-                        Label {
-                            Text(genre.name)
-                        } icon: {
-                            Image(systemName: "guitars")
-                                .foregroundStyle(Color.accentColor)
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 18)], spacing: 18) {
+                        ForEach(genres) { genre in
+                            NavigationLink(value: genre) {
+                                GenreTile(genre: genre)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(Metrics.contentPadding)
                 }
-                .listStyle(.plain)
             }
         }
         .navigationTitle("Genres")

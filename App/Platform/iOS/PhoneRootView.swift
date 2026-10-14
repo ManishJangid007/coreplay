@@ -66,6 +66,8 @@ struct PhoneRootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
+        // Albums and the Music tab start with the hero carousel too.
+        .environment(\.libraryHero, .carousels)
         .tabViewBottomAccessory {
             MiniPlayerView()
                 .matchedTransitionSource(id: PlayerTransition.id, in: playerTransition)

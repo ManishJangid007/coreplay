@@ -298,7 +298,8 @@ enum ScrubPreviewCache {
         var frames: [Int: Data]
     }
 
-    static let version = 1
+    /// 2: VLC's frames keep the picture's shape (version 1 squeezed them square).
+    static let version = 2
     /// The folder is trimmed back to this size, oldest strips first.
     static let sizeLimit = 300 * 1_024 * 1_024
 

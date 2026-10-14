@@ -29,6 +29,21 @@ public final class PlaybackSession {
         announcement = Announcement(id: UUID(), message: message)
     }
 
+    /// Reads a music file's ReplayGain values (the app reads its tags).
+    /// Called just before each song plays.
+    @ObservationIgnored public var replayGainLookup: (@Sendable (URL) async -> ReplayGainValues?)?
+
+    /// Finds subtitles online: OpenSubtitles with your key, when one is
+    /// saved in Settings (`nil` otherwise, and the player offers no search).
+    public var onlineSubtitles: (any OnlineSubtitleProvider)?
+    /// Describes what's playing for a subtitle search: the app fills in the
+    /// library's title, IMDb IDs and episode numbers.
+    @ObservationIgnored public var subtitleSearchRequest: (@MainActor (PlaybackItem) -> SubtitleSearchRequest)?
+
+    /// What you chose for each video (tracks, timing, picture), most recent kept.
+    @ObservationIgnored private var fileOptions = FileOptionsStore()
+    @ObservationIgnored private var fileOptionsSaveTask: Task<Void, Never>?
+
     @ObservationIgnored private let nowPlaying = NowPlayingInfoPublisher()
     @ObservationIgnored private let remoteCommands = RemoteCommandController()
     /// What the user asked for, independent of what the engine is doing right
@@ -48,6 +63,7 @@ public final class PlaybackSession {
         remoteCommands.install(for: self)
         updateRemoteCommands()
         restorePreferences()
+        connectFileOptions()
         #if os(iOS)
         audioSession.onEvent = { [weak self] event in
             self?.handleAudioSessionEvent(event)
@@ -217,25 +233,131 @@ public final class PlaybackSession {
         Self.save(settings, forKey: Self.equalizerKey)
     }
 
+    /// Levels songs to the same loudness with their ReplayGain values (Sound
+    /// Check); remembered between launches.
+    public func setReplayGain(_ settings: ReplayGainSettings) async {
+        // A song that started with levelling off hasn't had its values read.
+        if settings.mode != .off, var item = controller.currentItem, item.kind == .audio, item.replayGain == nil,
+           let lookup = replayGainLookup {
+            item.replayGain = await lookup(item.url)
+            if item.replayGain != nil, controller.currentItem?.id == item.id {
+                controller.updateReplayGainValues(item.replayGain)
+            }
+        }
+        controller.setReplayGain(settings)
+        Self.save(settings, forKey: Self.replayGainKey)
+    }
+
+    // MARK: - Subtitles online
+
+    /// Subtitles on offer for what's playing, best first.
+    public func searchOnlineSubtitles(languages: [String]) async throws -> [OnlineSubtitle] {
+        guard let provider = onlineSubtitles, let item = controller.currentItem else { return [] }
+        var request = subtitleSearchRequest?(item) ?? SubtitleSearchRequest(fileURL: item.url, title: item.title)
+        request.languages = languages
+        return try await provider.search(request)
+    }
+
+    /// Downloads a subtitle file and shows it (VLC takes over if needed).
+    public func addOnlineSubtitle(_ subtitle: OnlineSubtitle) async throws {
+        guard let provider = onlineSubtitles else { return }
+        let url = try await provider.download(subtitle)
+        try await controller.addExternalSubtitle(url: url)
+    }
+
     /// Subtitle text size; remembered between launches.
     public func setSubtitleSize(_ size: SubtitleSize) async {
         await controller.setSubtitleSize(size)
         UserDefaults.standard.set(size.rawValue, forKey: Self.subtitleSizeKey)
     }
 
+    /// Subtitle font, colour, outline, background and height; remembered between launches.
+    public func setSubtitleStyle(_ style: SubtitleStyle) async {
+        await controller.setSubtitleStyle(style)
+        Self.save(style, forKey: Self.subtitleStyleKey)
+    }
+
+    /// The character set for subtitle files that aren't Unicode (`nil`:
+    /// automatic); remembered between launches.
+    public func setSubtitleEncoding(_ encoding: String?) async {
+        await controller.setSubtitleEncoding(encoding)
+        if let encoding {
+            UserDefaults.standard.set(encoding, forKey: Self.subtitleEncodingKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.subtitleEncodingKey)
+        }
+    }
+
     private static let equalizerKey = "player.equalizer"
+    private static let replayGainKey = "player.replayGain"
+    private static let trackPreferencesKey = "player.trackPreferences"
+    private static let fileOptionsKey = "player.fileOptions"
+
+    /// Which audio and subtitles videos start with; remembered between launches.
+    public func setTrackPreferences(_ preferences: TrackPreferences) {
+        controller.trackPreferences = preferences
+        Self.save(preferences, forKey: Self.trackPreferencesKey)
+    }
+
+    /// Forgets every file's remembered options.
+    public func forgetFileOptions() {
+        fileOptions = FileOptionsStore()
+        UserDefaults.standard.removeObject(forKey: Self.fileOptionsKey)
+    }
+
+    /// The controller asks for, and reports, each video's options.
+    private func connectFileOptions() {
+        if let stored: FileOptionsStore = Self.load(forKey: Self.fileOptionsKey) {
+            fileOptions = stored
+        }
+        controller.rememberedOptions = { [weak self] item in
+            guard let self, PlaybackPreferences.remembersFileOptions else { return nil }
+            return self.fileOptions.options(for: FileOptionsStore.key(for: item))
+        }
+        controller.onOptionsChosen = { [weak self] item, options in
+            guard let self, PlaybackPreferences.remembersFileOptions else { return }
+            self.fileOptions.set(options, for: FileOptionsStore.key(for: item))
+            self.saveFileOptionsSoon()
+        }
+    }
+
+    /// Timing sliders change many times a second: save once they settle.
+    private func saveFileOptionsSoon() {
+        fileOptionsSaveTask?.cancel()
+        fileOptionsSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, !Task.isCancelled else { return }
+            Self.save(self.fileOptions, forKey: Self.fileOptionsKey)
+        }
+    }
     private static let subtitleSizeKey = "player.subtitleSize"
+    private static let subtitleStyleKey = "player.subtitleStyle"
+    private static let subtitleEncodingKey = "player.subtitleEncoding"
 
     private func restorePreferences() {
+        if let replayGain: ReplayGainSettings = Self.load(forKey: Self.replayGainKey) {
+            controller.setReplayGain(replayGain)
+        }
+        if let trackPreferences: TrackPreferences = Self.load(forKey: Self.trackPreferencesKey) {
+            controller.trackPreferences = trackPreferences
+        }
         let equalizer: EqualizerSettings? = Self.load(forKey: Self.equalizerKey)
         let subtitleSize = UserDefaults.standard.string(forKey: Self.subtitleSizeKey).flatMap(SubtitleSize.init(rawValue:))
-        guard equalizer != nil || subtitleSize != nil else { return }
+        let subtitleStyle: SubtitleStyle? = Self.load(forKey: Self.subtitleStyleKey)
+        let subtitleEncoding = UserDefaults.standard.string(forKey: Self.subtitleEncodingKey)
+        guard equalizer != nil || subtitleSize != nil || subtitleStyle != nil || subtitleEncoding != nil else { return }
         Task {
             if let equalizer {
                 await controller.setEqualizer(equalizer)
             }
             if let subtitleSize {
                 await controller.setSubtitleSize(subtitleSize)
+            }
+            if let subtitleStyle {
+                await controller.setSubtitleStyle(subtitleStyle)
+            }
+            if let subtitleEncoding {
+                await controller.setSubtitleEncoding(subtitleEncoding)
             }
         }
     }
@@ -278,6 +400,11 @@ public final class PlaybackSession {
     private func load(_ item: PlaybackItem) async {
         wantsPlayback = true
         activateAudioSession(isVideo: item.kind == .video)
+        var item = item
+        if item.kind == .audio, item.replayGain == nil, controller.replayGain.mode != .off, let lookup = replayGainLookup {
+            // A few milliseconds of tag reading, so the song starts at its level.
+            item.replayGain = await lookup(item.url)
+        }
         await controller.load(item)
         updateRemoteCommands()
     }
@@ -290,7 +417,7 @@ public final class PlaybackSession {
 
     private func controllerDidChange(_ change: PlaybackController.Change) {
         switch change {
-        case .item, .metadata, .duration:
+        case .item, .metadata, .duration, .titles:
             publishItem()
             publishPlayback()
         case .state, .seek, .rate:
@@ -311,10 +438,22 @@ public final class PlaybackSession {
             publishPlayback()
             return
         }
+        let finished = controller.currentItem
         if let item = queue.advance(automatic: true) {
-            await load(item)
+            if let finished, finished.url == item.url, let segment = finished.segment, let next = item.segment,
+               segment.continues(into: next) {
+                // The next track of a cue sheet: same file, so carry straight on.
+                controller.continueInto(item)
+                updateRemoteCommands()
+            } else {
+                await load(item)
+            }
         } else {
             wantsPlayback = false // the queue finished: nothing to resume after an interruption
+            if finished?.segment?.end != nil {
+                // The track ended inside its file: stop there.
+                controller.pause()
+            }
             publishPlayback()
         }
     }

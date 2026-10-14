@@ -27,6 +27,8 @@ Progress against it is tracked in [`Docs/Milestones.md`](Docs/Milestones.md).
 5. Open a file: **File ▸ Open…** (⌘O), drag files onto the window, or
    double-click a media file and choose Coreplay on the Mac; the **+** button
    or "Open Files…" on iPhone and iPad, or "Open in Coreplay" from Files.
+   On the Mac, File ▸ Open also takes a folder and plays what's in it.
+   Playlists (M3U, PLS, XSPF, cue sheets) open as the list they hold.
 
 ⌘U runs the package tests (engine routing, queue behaviour, formatting) on
 the Mac. The PlayerFeature tests also draw the player screens to PNG files in
@@ -52,8 +54,8 @@ Docs/Milestones.md    Status, and what each milestone built, stubbed and changed
 Tools/                make_brand_assets.py (icons from Design/), build-check.sh
                       and build-watch.sh (command-line builds)
 Packages/
-  PlaybackEngine/     PlaybackCore (protocol, events, router, player options;
-                      Foundation only)
+  PlaybackEngine/     PlaybackCore (protocol, events, router, player options,
+                      playlists, discs, track preferences; Foundation only)
                       PlaybackEngine (VLCKitEngine, AVPlayerEngine, prober,
                       PlaybackController, VideoSurface, Picture in Picture,
                       scrub previews). The only code that imports VLCKit.
@@ -128,15 +130,29 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   fills in movies: posters, synopses, and episode titles and stills. Movie
   and show pages credit them, as CC BY-SA asks. Settings ▸ Metadata ▸ Free
   Sources turns them off; adding a TMDB key replaces their results.
+- **Discs** (switched off, see Player ▸ Discs): with `DiscLayout.canPlayDiscs`
+  on, a folder holding VIDEO_TS or BDMV is one video (its VOB and M2TS files
+  aren't listed on their own), and so is a DVD or Blu-ray image (`.iso`).
+  Length, picture, sound and subtitle languages come from the DVD's IFO
+  files or the Blu-ray's playlists (`DVDVideoInfo`, `BlurayInfo` in
+  PlaybackCore), and artwork and `movie.nfo` from inside the folder, as Kodi
+  keeps them. `MediaFile` marks a disc folder with the extension "dvd" or
+  "bluray", so no schema change. While it's off, VOB and M2TS files are
+  listed as videos and `.iso` files are skipped.
 - **Video artwork**: anything without a poster or still gets a frame from
   about a tenth of the way in; Choose Artwork picks another frame or an image.
+  VLC's thumbnailer scales a frame to exactly the box it's given, so
+  `FrameGrabber` first reads the video's shape (pixel aspect included) with
+  libVLC's parser and asks for a box of that shape.
 - **Watched state** follows the TV app: resume after the first minute, watched
   from 92% on, or from the start of the end credits when a chapter marks
   them. Positions live in `PlaybackRecord`, by content fingerprint.
-- **The hero carousel** at the top of Home, Movies and TV Shows features new
-  arrivals, what you're in the middle of, then a pick of unwatched titles that
-  changes daily (`FeaturedPicker`). The watchlist ("+") is a list of IDs in
-  user defaults, so it needs no schema change.
+- **The hero carousel** at the top of Home, Movies, TV Shows and Albums
+  features new arrivals, what you're in the middle of, then a pick of
+  unwatched titles that changes daily (`FeaturedPicker`). It draws only the
+  current page, so changing page never scrolls full-size artwork. The
+  watchlist ("+") is a list of IDs in user defaults, so it needs no schema
+  change.
 - **Upgrades**: the schema is versioned (`LibrarySchemaV1`, `V2`) with a
   migration plan, and a test opens a real version 1 library to prove it.
 
@@ -178,7 +194,11 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Options.** Shape, crop, colours, deinterlacing, channels, the equalizer
   and subtitle size are VLC's, so choosing one hands an AVFoundation item to
   VLC at the same position. The controller keeps the chosen options and
-  applies them to whichever engine is playing.
+  applies them to whichever engine is playing. Subtitle style (font, colour,
+  outline, background, height) and text encoding are options of the libVLC
+  instance, so changing one restarts VLC at the same place with the same
+  tracks; AVFoundation takes the style as text style rules. VLC can show a
+  second subtitle track under the first.
 - **Picture in Picture.** `PictureInPicture` wraps Apple's controller for
   AVFoundation and VLCKit 4's PiP protocols for VLC (the video view is the
   `VLCPictureInPictureDrawable`).
@@ -189,10 +209,49 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   `PlaybackController` with the `.preview` purpose: no Picture in Picture,
   AirPlay, subtitles or scrub previews, and no audio output at all until
   you unmute (`PlaybackItem.playsAudio`), so other apps' music keeps playing.
+- **One VLC picture at a time.** Two libVLC video outputs drawing at once
+  trip libVLC's OpenGL checks, which end the app in VLCKit's development
+  builds. So the main controller stops every preview (and waits for its
+  output to go) before it opens anything, and a preview refuses VLC while the
+  player has a video open. The real-media test suites run one at a time for
+  the same reason.
 - **Up Next.** At an episode's end credits (a chapter named like "End
   Credits", or the last 20 seconds) the player offers the next queued episode
   and starts it after a countdown (`UpNextPolicy`). Settings ▸ Playback turns
   autoplay off; the next episode then waits on the last frame.
+- **Turning, flipping and zoom** (`VideoTransform`, `VideoZoom`) are done by
+  the video view, not the engine, so both engines can: the container's layer
+  gets a `sublayerTransform` (`VideoPlacement` does the maths, about the
+  layer's anchor, with the Mac's flipped y axis), and quarter turns swap the
+  frame's shape. 360° videos (Google's `sv3d`, Apple's `prji`, the older
+  spherical XML) go to VLC, which projects them; dragging and pinching move
+  its viewpoint.
+- **Discs.** A DVD or Blu-ray folder (or its VIDEO_TS, an IFO file in it, or
+  an image) opens as the disc in VLC with its menus (`DiscLayout`). The
+  player lists titles, shows a remote (arrows around Select) while a menu is
+  on screen, and maps the arrow keys and Return to it. A disc resumes by
+  choosing its film (the longest title), then seeking; progress counts only
+  while the film plays. **All of this is off for now:** the official
+  VLCKit 4.0.0a25 binaries are built with `--disable-dvdread
+  --disable-dvdnav --disable-bluray`, so `DiscLayout.canPlayDiscs` is
+  `false` and opening a disc says plainly that it can't play yet. A VLCKit
+  built with disc support turns it back on with that one constant (the
+  parity suite's disc tests run again then).
+- **Playlists.** M3U/M3U8, PLS, XSPF and cue sheets are read by
+  `PlaylistFile`. A cue sheet's tracks are `PlaybackSegment`s of one file:
+  times count from the track's start, and the next track carries on without
+  reopening the file.
+- **Remembered per file** (`FileOptionsStore`, the last 500 files): tracks,
+  timing, shape, crop, turn and deinterlacing come back the next time. When
+  nothing is remembered, Settings ▸ Languages picks the audio and subtitles
+  (`TrackPreferences`).
+- **Loudness.** Volume goes to 200% with VLC. Sound Check levels music with
+  ReplayGain (track or album) read from the tags; libVLC 4's volume
+  normaliser can't be switched on from a player (its audio filter belongs to
+  the equalizer), so there's no "normalise" for files without ReplayGain.
+- **Online subtitles.** With your OpenSubtitles.com API key (Settings,
+  kept in the Keychain), Subtitles ▸ Search OpenSubtitles finds subtitles by
+  the file's hash, then by title or episode, and loads the one you pick.
 
 ## Brand
 

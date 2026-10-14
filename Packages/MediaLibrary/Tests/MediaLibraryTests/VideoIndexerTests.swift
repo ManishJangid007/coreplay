@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import MetadataProviders
+import PlaybackCore
 import SwiftData
 import Testing
 import UniformTypeIdentifiers
@@ -155,6 +156,84 @@ extension LibraryTests {
             #expect(try await harness.indexer.retryNotFound() == 0)
             let inUse = try await harness.indexer.artworkKeysInUse()
             #expect(!inUse.contains(key))
+        }
+
+        /// The parity suite's DVD, as a folder and as an image.
+        private static let paritySamples = URL(filePath: #filePath)
+            .deletingLastPathComponent() // MediaLibraryTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // MediaLibrary
+            .deletingLastPathComponent() // Packages
+            .deletingLastPathComponent() // repository
+            .appending(path: "Tests/ParitySamples", directoryHint: .isDirectory)
+
+        @Test(.enabled(if: DiscLayout.canPlayDiscs, "VLCKit 4.0.0a25 is built without disc support"))
+        func discFoldersAndImagesAreOneVideoEach() async throws {
+            let harness = try Harness()
+            defer { harness.cleanUp() }
+            let dvd = Self.paritySamples.appending(path: "dvd", directoryHint: .isDirectory)
+            try #require(FileManager.default.fileExists(atPath: dvd.path(percentEncoded: false)), "parity sample missing")
+            try FileManager.default.copyItem(at: dvd, to: harness.root.appending(path: "Heat (1995)", directoryHint: .isDirectory))
+            try harness.write("Heat (1995)/poster.png", Self.png(red: 0.7))
+            try FileManager.default.copyItem(at: Self.paritySamples.appending(path: "dvd.iso"), to: harness.root.appending(path: "The Thing (1982).iso"))
+            // An image of a data disc isn't a video.
+            try harness.write("Installer.iso", Data(repeating: 0, count: 64 * 2_048))
+
+            // VOB files listed before discs were recognised.
+            let context = ModelContext(harness.container)
+            let source = try #require(try context.fetch(FetchDescriptor<Source>()).first)
+            for name in ["VIDEO_TS.VOB", "VTS_01_1.VOB"] {
+                let file = MediaFile()
+                file.relativePath = "Heat (1995)/VIDEO_TS/\(name)"
+                file.kindRaw = PlaybackItem.Kind.video.rawValue
+                file.source = source
+                context.insert(file)
+            }
+            try context.save()
+
+            try await harness.scan()
+
+            let files = try harness.fetch(MediaFile.self)
+            #expect(Set(files.map(\.relativePath)) == ["Heat (1995)", "The Thing (1982).iso"])
+            let folder = try #require(files.first { $0.relativePath == "Heat (1995)" })
+            #expect(folder.isDisc)
+            #expect(folder.fileExtension == "dvd")
+            #expect(folder.contentKey.hasPrefix("dvd:"))
+            #expect(folder.width == 720 && folder.height == 480)
+            #expect(folder.videoCodec == "MPEG-2")
+            #expect(folder.subtitleLanguages == "en")
+            #expect(abs((folder.duration ?? 0) - 2) < 0.1)
+            let image = try #require(files.first { $0.relativePath.hasSuffix(".iso") })
+            #expect(image.isDisc)
+            #expect(abs((image.duration ?? 0) - 2) < 0.1)
+
+            let videos = try harness.fetch(Video.self)
+            #expect(Set(videos.map(\.title)) == ["Heat", "The Thing"])
+            let heat = try #require(videos.first { $0.title == "Heat" })
+            #expect(heat.kind == .movie)
+            #expect(heat.year == 1995)
+            #expect(heat.posterKey != nil)
+
+            // Unchanged on the next scan.
+            try await harness.scan()
+            #expect(try harness.fetch(MediaFile.self).count == 2)
+        }
+
+        @Test(.enabled(if: DiscLayout.canPlayDiscs, "VLCKit 4.0.0a25 is built without disc support"))
+        func aSourceThatIsADiscsVideoTS() async throws {
+            let harness = try Harness()
+            defer { harness.cleanUp() }
+            let dvd = Self.paritySamples.appending(path: "dvd/VIDEO_TS", directoryHint: .isDirectory)
+            try #require(FileManager.default.fileExists(atPath: dvd.path(percentEncoded: false)), "parity sample missing")
+            let videoTS = harness.root.appending(path: "Alien (1979)/VIDEO_TS", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: videoTS.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: dvd, to: videoTS)
+
+            let found = LibraryIndexer.enumerate(videoTS)
+            #expect(found.count == 1)
+            #expect(found.first?.relativePath == "")
+            #expect(found.first?.disc == .dvd)
+            #expect(found.first?.isDiscFolder == true)
         }
     }
 }

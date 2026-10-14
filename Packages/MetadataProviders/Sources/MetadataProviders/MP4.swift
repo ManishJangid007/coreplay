@@ -174,6 +174,7 @@ enum MP4 {
     static func itemList(_ bytes: [UInt8], _ list: Box) -> AudioTags {
         var tags = AudioTags()
         var pictures: [EmbeddedArtwork] = []
+        var replayGainFields: [String: String] = [:]
         for item in boxes(in: bytes, from: list.payloadStart, to: list.end) {
             let children = boxes(in: bytes, from: item.payloadStart, to: item.end)
             let values = children.filter { $0.type == "data" }.compactMap { box -> (type: UInt32, value: ArraySlice<UInt8>)? in
@@ -226,12 +227,15 @@ enum MP4 {
                 case "musicbrainz track id": tags.musicBrainzRecordingID = text
                 case "musicbrainz album id": tags.musicBrainzAlbumID = text
                 case "musicbrainz artist id": tags.musicBrainzArtistID = text
+                case "replaygain_track_gain", "replaygain_track_peak", "replaygain_album_gain", "replaygain_album_peak":
+                    replayGainFields[name] = text
                 default: break
                 }
             default:
                 break
             }
         }
+        tags.replayGain = ReplayGainTags.from(lowercasedFields: replayGainFields)
         tags.artwork = EmbeddedArtwork.best(of: pictures)
         return tags
     }

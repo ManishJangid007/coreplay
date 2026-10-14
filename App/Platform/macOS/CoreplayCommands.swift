@@ -116,6 +116,27 @@ struct CoreplayCommands: Commands {
                 }
             }
 
+            if MediaTitle.offersChoice(controller.titles) {
+                Menu("Title") {
+                    ForEach(MediaTitle.numbered(controller.titles), id: \.title.id) { entry in
+                        Toggle(isOn: Binding(
+                            get: { controller.currentTitleIndex == entry.title.id },
+                            set: { _ in controller.selectTitle(entry.title) }
+                        )) {
+                            Text([entry.title.displayName(number: entry.number), entry.title.details].compactMap { $0 }.joined(separator: "  "))
+                        }
+                    }
+                }
+            }
+
+            if controller.hasDiscMenu {
+                // Shift-M in the player, as in VLC.
+                Button("Disc Menu") {
+                    controller.navigateDisc(.menu)
+                }
+                .disabled(controller.isShowingDiscMenu)
+            }
+
             Divider()
 
             Picker("Speed", selection: Binding(
@@ -185,7 +206,12 @@ struct CoreplayCommands: Commands {
             }
 
             Button("Volume Up") {
-                controller.setVolume(controller.volume + 0.1)
+                let target = min(controller.volume + 0.1, PlaybackPreferences.maximumVolume)
+                if target > VolumeLimits.normal {
+                    Task { await controller.setBoostedVolume(target) }
+                } else {
+                    controller.setVolume(target)
+                }
             }
             .keyboardShortcut(.upArrow)
 
@@ -285,6 +311,68 @@ struct CoreplayCommands: Commands {
                 }
             }
             .disabled(!hasVideo)
+
+            Picker("Deinterlacing Method", selection: Binding(
+                get: { controller.deinterlaceFilter },
+                set: { filter in Task { await controller.setDeinterlaceFilter(filter) } }
+            )) {
+                ForEach(DeinterlaceFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .disabled(!hasVideo || controller.deinterlace == .off)
+
+            Divider()
+
+            Button("Zoom In") {
+                controller.setZoom(controller.zoom.stepped(up: true))
+            }
+            .keyboardShortcut("=")
+            .disabled(!hasVideo || controller.isSpherical || controller.zoom.scale >= VideoZoom.maximumScale)
+
+            Button("Zoom Out") {
+                controller.setZoom(controller.zoom.stepped(up: false))
+            }
+            .keyboardShortcut("-")
+            .disabled(!hasVideo || !controller.zoom.isZoomed)
+
+            Button("Whole Picture") {
+                controller.setZoom(.none)
+            }
+            .keyboardShortcut("0")
+            .disabled(!controller.zoom.isZoomed)
+
+            Menu("Turn and Flip") {
+                Button("Turn Left") {
+                    controller.rotate(clockwise: false)
+                }
+                .keyboardShortcut("l")
+                Button("Turn Right") {
+                    controller.rotate(clockwise: true)
+                }
+                .keyboardShortcut("r")
+                Button("Flip Horizontally") {
+                    controller.flipHorizontally()
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+                Button("Flip Vertically") {
+                    controller.flipVertically()
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
+                Divider()
+                Button("Undo Turn and Flip") {
+                    controller.setTransform(.identity)
+                }
+                .disabled(controller.transform.isIdentity)
+            }
+            .disabled(!hasVideo || controller.isSpherical)
+
+            if controller.isSpherical {
+                Button("Look Straight Ahead") {
+                    controller.setViewpoint(.straightAhead)
+                }
+                .disabled(controller.viewpoint.isStraightAhead)
+            }
 
             Button("Reset Colours") {
                 Task { await controller.setVideoAdjustments(.neutral) }

@@ -40,14 +40,16 @@ public struct ShowEdit: Sendable, Equatable {
 extension LibraryIndexer {
     // MARK: - Frames as artwork
 
-    /// Takes a frame from videos that have no artwork at all (home videos,
-    /// and anything TMDB doesn't know). Returns how many it tried.
+    /// Takes a frame from videos with no wide picture (no still, backdrop or
+    /// chosen artwork): home videos, and movies that only have a poster,
+    /// which Continue Watching and the hero carousel can't use. Returns how
+    /// many it tried.
     public func generateThumbnails(frameSource: any VideoFrameSource, roots: [UUID: URL], artworkStore: ArtworkStore, batchSize: Int = 6) async -> Int {
         // Typed constants keep the predicate quick to type-check.
         let none: String? = nil
         let maximumAttempts = 2
         let predicate = #Predicate<Video> { video in
-            video.thumbnailKey == none && video.posterKey == none && video.stillKey == none
+            video.thumbnailKey == none && video.stillKey == none && video.backdropKey == none
                 && video.customArtworkKey == none && video.thumbnailAttempts < maximumAttempts
         }
         var descriptor = FetchDescriptor<Video>(predicate: predicate, sortBy: [SortDescriptor(\Video.dateAdded, order: .reverse)])
@@ -60,10 +62,21 @@ extension LibraryIndexer {
             var time: TimeInterval?
         }
         var jobs: [Job] = []
+        var skippedDiscs = false
         for video in candidates where jobs.count < batchSize {
             guard let file = video.file, file.isAvailable, let sourceID = file.source?.id, let root = roots[sourceID] else { continue }
+            if file.isDisc {
+                // A disc opens at its menu: there's no frame a tenth of the
+                // way into "the file" to take. Its poster comes from lookups.
+                video.thumbnailAttempts = maximumAttempts
+                skippedDiscs = true
+                continue
+            }
             let url = file.relativePath.isEmpty ? root : root.appending(path: file.relativePath, directoryHint: .notDirectory)
             jobs.append(Job(id: video.id, url: url, time: Self.representativeTime(duration: video.duration)))
+        }
+        if skippedDiscs {
+            try? modelContext.save()
         }
         guard !jobs.isEmpty else { return 0 }
 
@@ -92,6 +105,25 @@ extension LibraryIndexer {
         }
         try? modelContext.save()
         return jobs.count
+    }
+
+    /// Frames VLC took before version 2 were squeezed into a square box, so
+    /// wide films looked stretched tall. Clears them (once) to be taken again.
+    public func clearSquashedFrames() throws -> Int {
+        let none: String? = nil
+        let descriptor = FetchDescriptor<Video>(predicate: #Predicate { $0.thumbnailKey != none })
+        var cleared = 0
+        for video in try modelContext.fetch(descriptor) {
+            let fileExtension = video.file?.fileExtension ?? ""
+            guard ContainerFormat(fileExtension: fileExtension).support != .native else { continue }
+            video.thumbnailKey = nil
+            video.thumbnailAttempts = 0
+            cleared += 1
+        }
+        if cleared > 0 {
+            try modelContext.save()
+        }
+        return cleared
     }
 
     /// A tenth of the way in skips black intros and title cards.

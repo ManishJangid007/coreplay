@@ -47,6 +47,7 @@ let package = Package(
             name: "VideoFeatureTests",
             dependencies: [
                 "VideoFeature",
+                "MusicFeature",
                 "DesignSystem",
                 "MediaLibrary",
                 "NowPlaying",

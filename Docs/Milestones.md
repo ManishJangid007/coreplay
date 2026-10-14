@@ -7,7 +7,7 @@
 | 3 | Library v1: sources, scanning, music tags and artwork, Music section, mini player, Now Playing | Done (checked on the Mac) |
 | 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Done (checked on the Mac) |
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
-| 6 | VLC parity: feature checklist against the sample suite | In progress: parity suite and Media Info done |
+| 6 | VLC parity: feature checklist against the sample suite | Done (checked on the Mac); DVD and Blu-ray wait for a VLCKit built with disc support |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
@@ -28,8 +28,181 @@ These come on top of the plan; nothing in the plan was dropped for them.
 | One app that feels the same everywhere, with a very large library | Every milestone; measured in Milestone 9 | Ongoing |
 | A hero carousel like the TV app and Netflix: full artwork for movies and shows, and a short clip playing for movies | Added during Milestone 6 | Done: Home, Movies and TV Shows (see below) |
 | A series page with the episodes, the one last played, and a seamless way to carry on | Added during Milestone 6 | Done: show page redesign and Up Next at the end credits (see below) |
+| Music lists that look like charts, not plain lists | Added during Milestone 6 | Done: chart rows, Top Songs, genre tiles and artist portraits (see below) |
 
 ---
+
+## Milestone 6: VLC parity — October 14, 2026
+
+### The checklist
+
+Every row of the build prompt's VLC checklist, with the sample that covers
+it (Tests/ParitySamples, made by `Tools/make_parity_samples.py`) and what
+the Mac's test run found (`build/parity-report.md`).
+
+| Feature | Sample | Engine | Result |
+| --- | --- | --- | --- |
+| Discs: VIDEO_TS folder with a menu | `dvd` | VLC | Recognised as a DVD; waits for a VLCKit with disc support (deviation 4) |
+| Discs: DVD ISO image | `dvd.iso` | VLC | Recognised as a DVD; waits for a VLCKit with disc support (deviation 4) |
+| Formats: H.264 and AAC in MP4 | `h264-aac.mp4` | AVFoundation | Plays |
+| Formats: HEVC in MP4 | `hevc-aac.mp4` | AVFoundation | Plays |
+| Formats: HEVC 10-bit, HDR10; Audio: AC-3 | `hevc10-hdr10.mkv` | VLC | Plays |
+| Formats: HEVC 10-bit, HLG | `hevc10-hlg.mp4` | AVFoundation | Plays |
+| Formats: VP9 and Opus in WebM | `vp9-opus.webm` | VLC | Plays |
+| Formats: AV1 | `av1-opus.webm` | VLC | Plays |
+| Formats: VP8 and Vorbis | `vp8-vorbis.webm` | VLC | Plays |
+| Formats: MPEG-4 Part 2 (Xvid) and MP3 in AVI | `xvid-mp3.avi` | VLC | Plays |
+| Formats: MPEG-2 and AC-3 in MPEG-TS | `mpeg2-ac3.ts` | VLC | Plays |
+| Formats: MPEG-2 and MP2 in MPEG-PS | `mpeg2-mp2.mpg` | VLC | Plays |
+| Formats: Theora in Ogg | `theora-vorbis.ogv` | VLC | Plays |
+| Formats: WMV and WMA in ASF | `wmv2-wma.wmv` | VLC | Plays |
+| Formats: FLV | `h264-aac.flv` | VLC | Plays |
+| Formats: ProRes and PCM in QuickTime | `prores-pcm.mov` | AVFoundation | Plays |
+| Formats: 3GP | `mpeg4-aac.3gp` | AVFoundation | Plays |
+| Audio: DTS | `h264-dts.mkv` | VLC | Plays |
+| Audio: Dolby TrueHD | `h264-truehd.mkv` | VLC | Plays |
+| Audio: FLAC in Matroska | `h264-flac.mkv` | VLC | Plays |
+| Audio tracks: two languages, named tracks; Audio: E-AC-3 | `two-audio-tracks.mkv` | VLC | Plays |
+| Subtitles: ASS with styling, SRT and WebVTT inside Matroska | `subtitles.mkv` | VLC | Plays |
+| Subtitles: 3GPP timed text in MP4 | `mov-text.mp4` | AVFoundation | Plays |
+| Subtitles: external SRT and WebVTT files | `sidecar.mkv` | VLC | Plays |
+| Navigation: chapters | `chapters.mkv` | VLC | Plays |
+| Audio: FLAC with ReplayGain tags | `tone-replaygain.flac` | AVFoundation | Plays |
+| Audio: Opus | `tone.opus` | VLC | Plays |
+| Audio: Vorbis | `tone.ogg` | VLC | Plays |
+| Audio: ALAC | `tone-alac.m4a` | AVFoundation | Plays |
+| Audio: WMA | `tone.wma` | VLC | Plays |
+| Audio: E-AC-3 in Matroska audio | `tone.mka` | VLC | Plays |
+| Audio: AIFF | `tone.aiff` | AVFoundation | Plays |
+| Subtitles: DVD (VobSub) pictures | `dvdsub.mkv` | VLC | Plays |
+
+Options that aren't about a file format, checked by their own tests:
+
+| Feature | How it was checked | Result |
+| --- | --- | --- |
+| Subtitle font, colour, outline, background, height; text encoding | Snapshot of the Subtitle Style page; VLC restarts at the same place with the same tracks | Passes: a style becomes VLC’s text renderer options, and VLC restarts at the same place with the same tracks (`twoSubtitlesSurviveANewStyle`) |
+| Two subtitle tracks at once (VLC) | Two tracks selected in `subtitles.mkv` | Passes: English with French under it, still there after a restart |
+| Turn, flip, zoom | `PictureGeometryTests`: a quarter turn lays the picture out sideways; Linux tests of the maths | Passes |
+| Deinterlacing methods | libVLC's filter names, set while playing `mpeg2-ac3.ts` | Passes |
+| 360° video | A generated MP4 with an `sv3d` box goes to VLC, which reports it spherical; looking around moves the viewpoint | Passes |
+| Volume boost to 200% | `LoudnessPlaybackTests` | Passes |
+| ReplayGain (Sound Check) | `tone-replaygain.flac`: track −6 dB, album −4 dB | Passes |
+| Per-file memory | `TrackChoiceTests`: tracks, timing and a turn come back | Passes |
+| Preferred audio and subtitle languages | `TrackChoiceTests`: French picked in `two-audio-tracks.mkv` and `subtitles.mkv` | Passes |
+| Titles, DVD menus | `DiscPlaybackTests`: a VIDEO_TS folder and an ISO are recognised as a DVD; the menu, Select, title list and resume tests wait for a VLCKit with disc support | Recognised; menus and titles wait for a VLCKit with disc support (deviation 4) |
+| Subtitle search (OpenSubtitles) | Stubbed replies: search by hash and title, sign in, download, quota errors | Passes |
+| Jump to time | Already there (⌘J, Tools ▸ Go To) | Done |
+
+### What was built
+
+**Subtitles**
+- **Style:** font (five families every Apple device has), colour, bold, outline, background (none, see-through, solid) and height. Options ▸ Subtitles ▸ Style, remembered between launches.
+- **Text encoding** for subtitle files that aren't Unicode: 18 character sets, as VLC's "Default encoding" offers them.
+- VLC reads both when it starts, so changing one restarts the video at the same place, with the same tracks. AVFoundation applies the style straight away.
+- **A second subtitle track** under the first (VLC), for learning a language.
+
+**Picture**
+- **Turn** 90° at a time, and **flip** either way: the player's view does it, so both engines can (Video ▸ Turn and Flip, and Options ▸ Picture).
+- **Zoom** up to 4×: pinch past Fill, or Video ▸ Zoom In (⌘=) and Zoom Out (⌘−); drag to move around. Whole Picture (⌘0) goes back.
+- **Deinterlacing method,** as in VLC: Yadif, Yadif (2×), Blend, Bob, Linear, Mean, Discard, X, Phosphor and Film NTSC (IVTC), each with a line on what it's good for.
+- **360° video:** files with the spherical metadata phones and cameras write (Google's `sv3d`, Apple's `prji`, the older XML) play with VLC. Drag to look around, pinch to zoom, and Look Straight Ahead resets.
+
+**Sound**
+- **Volume Boost** (Settings ▸ Playback ▸ Listening) lets the volume go to 200%: ↑ past 100% on the Mac, or the volume slider. Above 100%, playback moves to VLC.
+- **Sound Check** (Listening too) levels music with ReplayGain, by track or album, with a level and protection from clipping. Tags are read from FLAC, Ogg, Opus, MP3, APE and MP4 files (R128 too).
+
+**Remembered per file, and your languages**
+- The next time a video plays, the audio and subtitle tracks, timing, shape, crop, turn and deinterlacing you chose come back (the last 500 files). Settings ▸ Playback ▸ Languages ▸ Remember Options for Each File turns it off.
+- **Languages** (same place): audio in your language when the file has it, and subtitles Automatic, When the Audio Is in Another Language, Always, or Off, in a language you pick.
+
+**Discs** (titles, menus, images): built, but switched off until VLCKit plays discs (deviation 4)
+- **DVD and Blu-ray folders and images** open as the disc: File ▸ Open a folder holding VIDEO_TS or BDMV (or VIDEO_TS itself, an IFO file in it, or an `.iso`), or drag one onto the window. Today the player says it can't play discs yet.
+- **In a menu** the player shows a remote (the arrows around Select) at the bottom, out of the menu's way. The keyboard's arrows and Return work it too.
+- **Titles:** Options ▸ Disc lists them with their lengths and chapters and marks the main feature; Go to Disc Menu (and Pop-Up Menu for Blu-ray). Playback ▸ Title and Disc Menu on the Mac, and VLC's keys: Shift-M menu, Shift-B/Shift-O next and previous title, Shift-N/Shift-P chapters.
+- **In the library** a disc folder or image is one movie, not a pile of VOB files. Its length, picture, sound and subtitle languages come from the disc's own files, and `poster.jpg` and `movie.nfo` from inside the folder.
+- **Resume** skips the menu: the film starts where you left it. Progress is saved only while the film plays, not menus or extras.
+
+**Playlists**
+- M3U and M3U8, PLS, XSPF and cue sheets open as the list they hold. A cue sheet's tracks play as stretches of one file, running on into each other without a gap.
+
+**Subtitle search**
+- **OpenSubtitles.com** with your own API key (Settings ▸ Metadata on the Mac, Settings on iPhone and iPad; kept in the Keychain, with an optional account for more downloads).
+- Subtitles ▸ Search OpenSubtitles: matches made for your exact file come first (by its hash), then by title, or show, season and episode. Machine-translated ones go last.
+
+### How it was checked
+
+- **Builds:** macOS and the iOS Simulator build cleanly (Xcode, Swift 6 language mode).
+- **Tests on the Mac:** 313 package tests pass, including the parity suite above (31 samples played through the app's own controller, each on the engine the router should pick, with the tracks, chapters and subtitles each engine reports) and real-media tests for two subtitle tracks, a new subtitle style restarting VLC in place, turning and zoom, 360° video, Sound Check and the volume boost, and remembered options.
+- **Tests on Linux:** 250 tests of the pure logic (disc readers, playlist files, loudness, track preferences, geometry, tag readers).
+- **Snapshots:** the Options pages and the redesigned music lists are drawn to PNG files (`build/snapshots`) and were checked by eye.
+- **Not yet checked by hand:** an iPhone run, and real discs (see deviation 4).
+
+### Stubbed or deferred
+
+- **Blu-ray menus** need VLCKit's libbluray and an unencrypted disc. Java (BD-J) menus need a Java runtime that VLCKit doesn't have, so those discs play their titles without menus.
+- **Physical discs:** Macs rarely have a drive now. An external drive's disc mounts as a folder, which plays like any DVD folder.
+- **Audio CDs and Video CDs** aren't supported.
+- **Volume normalisation** for files without ReplayGain (see below).
+
+### Where this deviates from the build prompt, and why
+
+1. **No volume normaliser.** libVLC 4 gives a player's audio filter to its equalizer (`libvlc_media_player_set_equalizer` replaces it), so VLC's "normvol" can't be switched on from the app. Sound Check levels music that has ReplayGain tags instead.
+2. **Subtitle search needs your OpenSubtitles key,** as lookups use your own keys. Without one, Search OpenSubtitles doesn't appear.
+3. **In a disc's menu, the arrow keys move around the menu** instead of skipping and changing the volume, as on a DVD player and in VLC.
+4. **DVDs and Blu-rays don't play yet.** The official VLCKit 4.0.0a25 binaries are configured with `--disable-dvdread --disable-dvdnav --disable-bluray --disable-vcd`: a VIDEO_TS folder ends at once and an image fails to open. Coreplay recognises the disc and says it can't play it, keeps listing its VOB and M2TS files (which do play), and skips `.iso` files in the library. Titles, menus, the remote, resume and library support are written and tested where they can be (the IFO and MPLS readers on Linux); `DiscLayout.canPlayDiscs` turns them on with a VLCKit built with libdvdnav and libbluray.
+
+---
+
+## Music lists as charts — October 14, 2026
+
+You said the music lists looked like plain lists. They now look like the charts in Music and Spotify.
+
+- **Songs:** a header with the count, total time, Play and Shuffle; **Top Songs**, your ten most played, numbered like a chart in two columns; then every song as a row with its artwork, a bold title over the artist, the album in its own column when the window is wide, and the length. Rows alternate with a faint stripe, light up under the pointer (a play button replaces the number) and show a moving waveform while they play. Lossless files carry a small LOSSLESS mark beside the title.
+- **Album page:** on the Mac and iPad the cover sits beside the title, artist (a link to their page), year, genre and length, over a soft wash of the cover's colours; the iPhone keeps the stacked layout. Tracks are numbered chart rows.
+- **Genres:** coloured tiles, each with a couple of its album covers tipped into the corner; the same genre always gets the same colours.
+- **Artists:** a grid of round portraits with "2 albums · 18 songs" under each name. An artist's page lists their songs as numbered chart rows.
+- Checked with snapshots of every piece (`music-*.png` in `build/snapshots`), in dark and light.
+
+---
+
+## Fixes after your first look at the hero — October 14, 2026
+
+What you reported, and what changed.
+
+**1. Pictures stretched tall, in the hero and in Continue Watching**
+- **Cause:** VLC's thumbnailer scales a frame to exactly the box it's given, and Coreplay gave it the same box for every film. A 2.39:1 film was squeezed into it, so it looked stretched tall. Frames from MP4 and MOV files (made by AVFoundation) were fine; MKV, AVI, WebM and the rest were affected.
+- **Fix:** VLC now reads the video's real shape first, pixel aspect included, and makes the frame in a box of that shape. When the shape can't be read, the frame is cropped to 16:9 instead of stretched.
+- **Your library:** frames already taken from those files are taken again once, by themselves, the next time the library starts. Scrubber previews are remade too.
+
+**2. The carousel didn't move on, and swiping wasn't smooth**
+- It held still whenever the pointer was over it, which on the Mac is most of the time. Now it moves on every eight seconds. It pauses only off screen, in the background, with Reduce Motion, or while a video plays.
+- It was a scroll view of full-size pages. It's now a pager that draws only the current page: pictures cross-fade and the words slide in. While you swipe, the words follow your finger.
+- A clip holds its page until it ends, plus three seconds. If no picture arrives within eight seconds, it gives up and the page moves on.
+
+**3. Music had no hero**
+- Albums (Mac and iPad) and the Music tab (iPhone) now open with a carousel of albums: the cover, sharp, over a blur of itself, "Album · Artist · Genre · Year", "9 songs, 32 min", **Play** and **Shuffle**.
+- Albums you've played lately and new ones come first.
+- Home's carousel includes two albums among the films and shows.
+
+**4. The crash when playing a movie**
+- **Likely cause:** the carousel's clip and the movie drawing through VLC at the same time. Two libVLC video outputs at once trip libVLC's OpenGL checks, which end the app in VLCKit's development builds (the test suites were already arranged to avoid this). A clip could start in the second between pressing Play and the movie appearing.
+- **Fix:**
+  - the player stops any clip, and waits for its picture to go, before it opens anything;
+  - a clip never uses VLC while the player has a video open, even paused;
+  - the carousel checks again just before a clip starts.
+- **New tests:**
+  - a clip and the movie together;
+  - VLC's view taken out of its window while it plays.
+  Neither crashes.
+
+**5. The movie page**
+- **The backdrop:** the movie's wide picture fills the page behind everything, as on Netflix and in the TV app, shaded at the left and the bottom. It's the backdrop, your chosen artwork or a frame; with none of those, the poster blurred.
+- **Over it:**
+  - "MOVIE", the title, the details line and badges;
+  - **Play** or **Resume** (with progress), then Play from Beginning, watchlist, watched and •••, and time left;
+  - the synopsis with **More**, and who's in it and who directed it.
+- **Scrolling:** the cast and the Information section follow, and the picture darkens as you go.
+- The series page now uses the same full-page picture.
 
 ## Hero carousel and series page — October 13, 2026
 
@@ -54,7 +227,7 @@ page as the reference).
   - page dots;
   - arrows that appear on hover on the Mac and stay visible on the iPad;
   - swiping.
-  It moves on by itself every nine seconds, but not while the pointer is over it, while it's off screen or while the app is in the background. With Reduce Motion on, it doesn't move on by itself.
+  It moves on by itself every eight seconds, but not while it's off screen, while the app is in the background or while a video plays. With Reduce Motion on, it doesn't move on by itself. (Until October 14 it also held still under the pointer; see the fixes below.)
 - **What it features** (`FeaturedPicker`, tested):
   1. up to three titles added in the last two weeks;
   2. up to two titles you're in the middle of;
@@ -66,7 +239,7 @@ page as the reference).
   - It's silent, with a mute button to turn the sound on.
   - It uses the same engines as the player, so MKV and AVI clips play too.
 - **When clips don't play:**
-  - while something else is playing;
+  - while something else is playing, or while the player has a video open (even paused);
   - in Low Power Mode;
   - with iOS's Auto-Play Video Previews turned off;
   - with Settings ▸ Playback ▸ Play Previews turned off.

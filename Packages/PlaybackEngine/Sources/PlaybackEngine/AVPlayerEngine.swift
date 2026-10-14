@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreMedia
 import Foundation
 import ImageIO
 import PlaybackCore
@@ -35,9 +36,19 @@ final class AVPlayerEngine: PlaybackEngine {
     var cropRatio: VideoRatio?
     var videoAdjustments: VideoAdjustments = .neutral
     var deinterlace: DeinterlaceMode = .automatic
+    var deinterlaceFilter: DeinterlaceFilter = .standard
     var stereoMode: StereoMode = .automatic
     var equalizer: EqualizerSettings = .flat
-    var subtitleScale: Float = 1
+    /// 360° videos go to VLC (see `SphericalVideoDetector`), so AVFoundation
+    /// only ever shows flat pictures.
+    let projection: VideoProjection = .flat
+    var viewpoint: Viewpoint = .straightAhead
+    var subtitleScale: Float = 1 {
+        didSet { applyTextStyle() }
+    }
+    var subtitleStyle: SubtitleStyle = .standard {
+        didSet { applyTextStyle() }
+    }
 
     private let continuation: AsyncStream<PlaybackEvent>.Continuation
     let player = AVPlayer()
@@ -116,6 +127,7 @@ final class AVPlayerEngine: PlaybackEngine {
         let playerItem = AVPlayerItem(asset: asset)
         // Keep voices natural at other speeds.
         playerItem.audioTimePitchAlgorithm = .spectral
+        playerItem.textStyleRules = Self.textStyleRules(style: subtitleStyle, scale: subtitleScale)
 
         self.asset = asset
         self.playerItem = playerItem
@@ -203,6 +215,43 @@ final class AVPlayerEngine: PlaybackEngine {
         refreshTracks()
     }
 
+    /// AVFoundation shows one subtitle track at a time.
+    func selectSecondarySubtitleTrack(id: MediaTrack.ID?) {}
+
+    // MARK: - Subtitle style
+
+    private func applyTextStyle() {
+        playerItem?.textStyleRules = Self.textStyleRules(style: subtitleStyle, scale: subtitleScale)
+    }
+
+    /// The style as one text style rule over every subtitle, or `nil` for
+    /// AVFoundation's own look (which follows the system's caption settings).
+    nonisolated static func textStyleRules(style: SubtitleStyle, scale: Float) -> [AVTextStyleRule]? {
+        guard !style.isStandard || scale != 1 else { return nil }
+        var attributes: [String: Any] = [:]
+        if scale != 1 {
+            attributes[kCMTextMarkupAttribute_RelativeFontSize as String] = Double(scale) * 100
+        }
+        if !style.isStandard {
+            let color = style.textColor.components
+            attributes[kCMTextMarkupAttribute_ForegroundColorARGB as String] = [1, color.red, color.green, color.blue]
+            if style.font != .standard {
+                attributes[kCMTextMarkupAttribute_FontFamilyName as String] = style.font.familyName
+            }
+            attributes[kCMTextMarkupAttribute_BoldStyle as String] = style.isBold
+            attributes[kCMTextMarkupAttribute_CharacterEdgeStyle as String] = style.outline == .none
+                ? kCMTextMarkupCharacterEdgeStyle_None
+                : kCMTextMarkupCharacterEdgeStyle_Uniform
+            if style.background != .none {
+                attributes[kCMTextMarkupAttribute_BackgroundColorARGB as String] = [Double(style.background.opacity) / 255, 0, 0, 0]
+            }
+            if let line = style.position.linePercentage {
+                attributes[kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String] = line
+            }
+        }
+        return AVTextStyleRule(textMarkupAttributes: attributes).map { [$0] }
+    }
+
     func addExternalSubtitle(url: URL) async throws {
         throw PlaybackError(.unsupportedFormat, "External subtitles need the VLC engine.")
     }
@@ -213,6 +262,16 @@ final class AVPlayerEngine: PlaybackEngine {
         guard let chapter = chapters.first(where: { $0.id == index }) else { return }
         Task { await seek(to: chapter.start) }
     }
+
+    // MARK: - Titles
+
+    /// AVFoundation plays files, never discs: one title, no menus.
+    let titles: [MediaTitle] = []
+    let currentTitleIndex: Int? = nil
+
+    func selectTitle(at index: Int) {}
+
+    func navigate(_ action: DiscNavigation) {}
 
     // MARK: - Video output
 

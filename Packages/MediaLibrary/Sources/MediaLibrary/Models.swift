@@ -76,6 +76,8 @@ public final class MediaFile {
     /// Path below the source's root ("" for single-file sources).
     public var relativePath: String = ""
     public var fileName: String = ""
+    /// Lower case; "dvd" or "bluray" for a DVD or Blu-ray folder, which has
+    /// no extension of its own.
     public var fileExtension: String = ""
     public var kindRaw: String = PlaybackItem.Kind.audio.rawValue
     public var fileSize: Int64 = 0
@@ -124,6 +126,13 @@ public final class MediaFile {
 
     public var kind: PlaybackItem.Kind {
         PlaybackItem.Kind(rawValue: kindRaw) ?? .unknown
+    }
+
+    /// A DVD or Blu-ray: a folder copied from one, or an image of one (the
+    /// scanner only keeps images of video discs).
+    public var isDisc: Bool {
+        fileExtension == DiscKind.dvd.rawValue || fileExtension == DiscKind.bluray.rawValue
+            || DiscLayout.imageExtensions.contains(fileExtension)
     }
 
     public var enginePreference: EnginePreference {

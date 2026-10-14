@@ -27,6 +27,8 @@ public struct AudioTags: Sendable, Hashable {
     public var musicBrainzRecordingID: String?
     public var musicBrainzAlbumID: String?
     public var musicBrainzArtistID: String?
+    /// Loudness levelling values, when the file has been scanned.
+    public var replayGain: ReplayGainTags?
     /// The best embedded picture (the front cover when the file says which one that is).
     public var artwork: EmbeddedArtwork?
     /// Playing time in seconds, from stream headers (not from a tag) where possible.
@@ -63,6 +65,7 @@ public struct AudioTags: Sendable, Hashable {
         musicBrainzRecordingID = musicBrainzRecordingID ?? other.musicBrainzRecordingID
         musicBrainzAlbumID = musicBrainzAlbumID ?? other.musicBrainzAlbumID
         musicBrainzArtistID = musicBrainzArtistID ?? other.musicBrainzArtistID
+        replayGain = replayGain ?? other.replayGain
         artwork = artwork ?? other.artwork
         duration = duration ?? other.duration
         format = format ?? other.format
@@ -220,5 +223,70 @@ enum Text {
         if bytes.starts(with: Array("BM".utf8)) { return "image/bmp" }
         if bytes.count >= 12, bytes.starts(with: Array("RIFF".utf8)), Array(bytes[8..<12]) == Array("WEBP".utf8) { return "image/webp" }
         return nil
+    }
+}
+
+/// ReplayGain: how many decibels to turn a track (or its whole album) up or
+/// down so it plays at the same loudness as everything else, and the
+/// loudest sample in it (1 is full scale). Written by taggers such as
+/// foobar2000, beets and MusicBrainz Picard.
+public struct ReplayGainTags: Sendable, Hashable {
+    public var trackGain: Double?
+    public var trackPeak: Double?
+    public var albumGain: Double?
+    public var albumPeak: Double?
+
+    public init(trackGain: Double? = nil, trackPeak: Double? = nil, albumGain: Double? = nil, albumPeak: Double? = nil) {
+        self.trackGain = trackGain
+        self.trackPeak = trackPeak
+        self.albumGain = albumGain
+        self.albumPeak = albumPeak
+    }
+
+    public var isEmpty: Bool {
+        trackGain == nil && albumGain == nil
+    }
+
+    /// From fields keyed in lower case: `replaygain_track_gain` and friends.
+    static func from(lowercasedFields fields: [String: String]) -> ReplayGainTags? {
+        let tags = ReplayGainTags(
+            trackGain: gain(fields["replaygain_track_gain"]),
+            trackPeak: peak(fields["replaygain_track_peak"]),
+            albumGain: gain(fields["replaygain_album_gain"]),
+            albumPeak: peak(fields["replaygain_album_peak"])
+        )
+        return tags.isEmpty ? nil : tags
+    }
+
+    /// Opus's `R128_TRACK_GAIN` and `R128_ALBUM_GAIN`: whole numbers in
+    /// 1/256 dB towards −23 LUFS. ReplayGain aims 5 dB louder (−18 LUFS).
+    static func fromR128(track: String?, album: String?) -> ReplayGainTags? {
+        func converted(_ text: String?) -> Double? {
+            guard let text, let value = Int(text.trimmingCharacters(in: .whitespaces)), abs(value) <= 32_767 else { return nil }
+            return Double(value) / 256 + 5
+        }
+        let tags = ReplayGainTags(trackGain: converted(track), albumGain: converted(album))
+        return tags.isEmpty ? nil : tags
+    }
+
+    /// "-6.54 dB", "+1.2 dB" or "-6.54".
+    static func gain(_ text: String?) -> Double? {
+        guard let text else { return nil }
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasSuffix("db") {
+            trimmed = String(trimmed.dropLast(2)).trimmingCharacters(in: .whitespaces)
+        }
+        if trimmed.hasPrefix("+") {
+            trimmed.removeFirst()
+        }
+        guard let value = Double(trimmed.replacingOccurrences(of: ",", with: ".")), value.isFinite, abs(value) <= 64 else { return nil }
+        return value
+    }
+
+    /// "0.988553"; anything not above zero means "unknown".
+    static func peak(_ text: String?) -> Double? {
+        guard let text, let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")),
+              value.isFinite, value > 0, value < 100 else { return nil }
+        return value
     }
 }

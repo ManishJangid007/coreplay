@@ -10,17 +10,26 @@ public struct EngineConfiguration: Hashable, Sendable {
     public var networkCachingMilliseconds: Int
     /// Extra libVLC command-line options, e.g. `--deinterlace=1 --audio-time-stretch`.
     public var customLibVLCOptions: String
+    /// How plain-text subtitles look (VLC's text renderer reads it at start-up).
+    public var subtitleStyle: SubtitleStyle
+    /// The character set of subtitle files that aren't Unicode (an iconv
+    /// name), or `nil` to let VLC decide.
+    public var subtitleEncoding: String?
 
     public init(
         alwaysUseVLC: Bool = false,
         hardwareDecoding: Bool = true,
         networkCachingMilliseconds: Int = 1_000,
-        customLibVLCOptions: String = ""
+        customLibVLCOptions: String = "",
+        subtitleStyle: SubtitleStyle = .standard,
+        subtitleEncoding: String? = nil
     ) {
         self.alwaysUseVLC = alwaysUseVLC
         self.hardwareDecoding = hardwareDecoding
         self.networkCachingMilliseconds = networkCachingMilliseconds
         self.customLibVLCOptions = customLibVLCOptions
+        self.subtitleStyle = subtitleStyle
+        self.subtitleEncoding = subtitleEncoding
     }
 
     /// Options used to create the shared `VLCLibrary`. Changing these takes
@@ -32,6 +41,8 @@ public struct EngineConfiguration: Hashable, Sendable {
             "--no-play-and-pause",
             "--network-caching=\(max(0, networkCachingMilliseconds))",
         ]
+        options += subtitleStyle.libVLCOptions
+        // Custom options come last, so they win.
         options += EngineConfiguration.parseOptions(customLibVLCOptions)
             .filter { $0.hasPrefix("--") }
         return options
@@ -45,6 +56,9 @@ public struct EngineConfiguration: Hashable, Sendable {
             // decoders as a fallback for codecs avcodec can't handle.
             options.append(":codec=avcodec,all")
             options.append(":avcodec-hw=none")
+        }
+        if let subtitleEncoding, !subtitleEncoding.isEmpty {
+            options.append(":subsdec-encoding=\(subtitleEncoding)")
         }
         options += EngineConfiguration.parseOptions(customLibVLCOptions)
             .filter { $0.hasPrefix(":") }

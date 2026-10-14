@@ -31,10 +31,13 @@ public struct MediaProbe: Hashable, Sendable {
     public var isPlayable: Bool
     public var hasProtectedContent: Bool
     public var tracks: [Track]
+    /// A 360° video (see `SphericalVideoDetector`).
+    public var projection: VideoProjection
 
-    public init(isPlayable: Bool, hasProtectedContent: Bool = false, tracks: [Track]) {
+    public init(isPlayable: Bool, hasProtectedContent: Bool = false, tracks: [Track], projection: VideoProjection = .flat) {
         self.isPlayable = isPlayable
         self.hasProtectedContent = hasProtectedContent
         self.tracks = tracks
+        self.projection = projection
     }
 }

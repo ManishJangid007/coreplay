@@ -181,6 +181,41 @@ struct ContainerTests {
         #expect(tags.artwork?.data == Data(Fixtures.jpeg))
     }
 
+    @Test func replayGainFromVorbisComments() {
+        let tags = VorbisComment.parse(Fixtures.vorbisComment([
+            "TITLE=Loud", "REPLAYGAIN_TRACK_GAIN=-6.54 dB", "replaygain_track_peak=0.988553",
+            "REPLAYGAIN_ALBUM_GAIN=+1.20 dB", "REPLAYGAIN_ALBUM_PEAK=1.051",
+        ]))
+        #expect(tags.replayGain == ReplayGainTags(trackGain: -6.54, trackPeak: 0.988553, albumGain: 1.2, albumPeak: 1.051))
+        // Opus files carry R128 gains (towards −23 LUFS) instead.
+        let opus = VorbisComment.parse(Fixtures.vorbisComment(["R128_TRACK_GAIN=-2560", "R128_ALBUM_GAIN=512"]))
+        #expect(opus.replayGain == ReplayGainTags(trackGain: -5, albumGain: 7))
+        #expect(VorbisComment.parse(Fixtures.vorbisComment(["TITLE=Quiet"])).replayGain == nil)
+    }
+
+    @Test func replayGainFromID3AndMP4AndAPE() throws {
+        let id3 = Fixtures.id3Tag(version: 4, frames: [
+            Fixtures.id3v24Frame("TXXX", [3] + Fixtures.ascii("REPLAYGAIN_TRACK_GAIN") + [0] + Fixtures.ascii("-3.10 dB")),
+            Fixtures.id3v24Frame("TXXX", [3] + Fixtures.ascii("replaygain_track_peak") + [0] + Fixtures.ascii("0.75")),
+        ])
+        let mp3 = try TagReader.read(DataByteSource(id3 + Fixtures.mp3Stream(frames: 10)))
+        #expect(mp3.replayGain == ReplayGainTags(trackGain: -3.1, trackPeak: 0.75))
+
+        let freeform = { (name: String, value: String) in
+            Fixtures.box("----", Fixtures.fullBox("mean", Array("com.apple.iTunes".utf8)) + Fixtures.fullBox("name", Array(name.utf8)) + Fixtures.dataBox(type: 1, Array(value.utf8)))
+        }
+        let ilst = Fixtures.box("ilst", freeform("replaygain_album_gain", "-8.00 dB") + freeform("replaygain_album_peak", "0.9"))
+        let meta = Fixtures.fullBox("meta", Fixtures.fullBox("hdlr", Fixtures.be32(0) + Fixtures.ascii("mdir") + [UInt8](repeating: 0, count: 13)) + ilst)
+        let mvhd = Fixtures.fullBox("mvhd", Fixtures.be32(0) + Fixtures.be32(0) + Fixtures.be32(1000) + Fixtures.be32(1000) + [UInt8](repeating: 0, count: 80))
+        let file = Fixtures.box("ftyp", Fixtures.ascii("M4A ") + Fixtures.be32(0)) + Fixtures.box("moov", mvhd + Fixtures.box("udta", meta))
+        let m4a = try TagReader.read(DataByteSource(file))
+        #expect(m4a.replayGain == ReplayGainTags(albumGain: -8, albumPeak: 0.9))
+
+        #expect(ReplayGainTags.from(lowercasedFields: ["replaygain_track_gain": "-1,5 dB"]) == ReplayGainTags(trackGain: -1.5))
+        #expect(ReplayGainTags.gain("loud") == nil)
+        #expect(ReplayGainTags.peak("0") == nil)
+    }
+
     @Test func oggVorbisCommentsAndDurationFromLastGranule() throws {
         var identification: [UInt8] = [0x01] + Fixtures.ascii("vorbis") + Fixtures.le32(0) + [2] + Fixtures.le32(44_100)
         identification += Fixtures.le32(0) + Fixtures.le32(160_000) + Fixtures.le32(0) + [0xB8, 0x01]

@@ -4,14 +4,20 @@ import NowPlaying
 import SwiftData
 import SwiftUI
 
-/// Every song, alphabetically, with Play and Shuffle at the top.
+/// Every song, alphabetically: a header with Play and Shuffle, your Top
+/// Songs as a chart, then the list with album and length columns when the
+/// window is wide enough.
 public struct SongsView: View {
     @Environment(LibraryManager.self) private var library
     @Environment(PlaybackSession.self) private var session
     @Query(sort: \Track.sortTitle) private var tracks: [Track]
     @State private var editingTrack: Track?
+    @State private var topTracks: [Track] = []
+    @State private var width: CGFloat = 0
 
     public init() {}
+
+    private var isWide: Bool { width > 760 }
 
     public var body: some View {
         let playback = MusicPlayback(library: library, session: session)
@@ -20,19 +26,20 @@ public struct SongsView: View {
                 MusicEmptyState()
             } else {
                 List {
-                    PlayShuffleButtons(
-                        onPlay: { playback.play(tracks, shuffled: false) },
-                        onShuffle: { playback.shuffle(tracks) }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .listRowSeparator(.hidden)
-                    ForEach(tracks) { track in
+                    header(playback)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 8, trailing: 20))
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         Button {
                             playback.play(tracks, startingAt: track)
                         } label: {
-                            TrackRow(track: track, isCurrent: playback.isCurrent(track))
+                            ChartTrackRow(track: track, showsAlbum: isWide, isCurrent: playback.isCurrent(track), isStriped: index.isMultiple(of: 2))
                         }
                         .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
                         .disabled(!track.isAvailable)
                         .contextMenu {
                             TrackMenuItems(tracks: [track], onEditInfo: { editingTrack = track })
@@ -54,11 +61,52 @@ public struct SongsView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { newWidth in
+                    width = newWidth
+                }
             }
         }
         .navigationTitle("Songs")
+        .task(id: library.revision) {
+            topTracks = library.mostPlayedTracks(limit: 10)
+        }
         .sheet(item: $editingTrack) { track in
             TrackEditView(track: track)
+        }
+    }
+
+    private func header(_ playback: MusicPlayback) -> some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .bottom, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Songs")
+                        .font(.largeTitle.weight(.heavy))
+                    Text(MusicFormat.summary(songs: tracks.count, seconds: tracks.reduce(0) { $0 + ($1.duration ?? 0) }))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                PlayShuffleButtons(
+                    onPlay: { playback.play(tracks, shuffled: false) },
+                    onShuffle: { playback.shuffle(tracks) }
+                )
+                .frame(maxWidth: 320)
+            }
+            if topTracks.count >= 3 {
+                TopSongsChart(
+                    tracks: topTracks,
+                    isCurrent: { playback.isCurrent($0) },
+                    onPlay: { track in playback.play(topTracks, startingAt: track) }
+                )
+                Text("All Songs")
+                    .font(.title2.bold())
+            }
+            if isWide {
+                ChartColumnHeader(showsAlbum: true)
+            }
         }
     }
 }

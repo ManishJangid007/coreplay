@@ -12,7 +12,7 @@ import SwiftUI
 /// "SPU delay").
 public struct PlaybackOptionsView: View {
     public enum Page: Hashable {
-        case audio, subtitles, speed, picture, colours, sound, chapters, tools, info
+        case audio, subtitles, onlineSubtitles, subtitleStyle, encoding, speed, picture, colours, sound, titles, chapters, tools, info
     }
 
     @Environment(PlaybackSession.self) private var session
@@ -107,10 +107,14 @@ public struct PlaybackOptionsView: View {
         case nil: isVideo ? "Options" : "Playback"
         case .audio: "Audio"
         case .subtitles: "Subtitles"
+        case .onlineSubtitles: session.onlineSubtitles.map { "Search \($0.name)" } ?? "Search Online"
+        case .subtitleStyle: "Subtitle Style"
+        case .encoding: "Text Encoding"
         case .speed: "Speed"
         case .picture: "Picture"
         case .colours: "Colours"
         case .sound: "Sound"
+        case .titles: controller.isDisc ? "Disc" : "Titles"
         case .chapters: "Chapters"
         case .tools: "Tools"
         case .info: "Media Info"
@@ -123,10 +127,19 @@ public struct PlaybackOptionsView: View {
         case nil: rootPage
         case .audio: audioPage
         case .subtitles: subtitlesPage
+        case .onlineSubtitles: OnlineSubtitlesPage(onAdded: {
+            // The download took a while: only leave the page if it's still showing.
+            if path.last == .onlineSubtitles {
+                path.removeLast()
+            }
+        })
+        case .subtitleStyle: subtitleStylePage
+        case .encoding: encodingPage
         case .speed: speedPage
         case .picture: picturePage
         case .colours: coloursPage
         case .sound: soundPage
+        case .titles: titlesPage
         case .chapters: chaptersPage
         case .tools: toolsPage
         case .info: infoPage
@@ -146,6 +159,9 @@ public struct PlaybackOptionsView: View {
             OptionsGroup {
                 NavigationRow("Picture", systemImage: "aspectratio", value: pictureSummary) { path.append(.picture) }
                 NavigationRow("Sound", systemImage: "slider.vertical.3", value: soundSummary) { path.append(.sound) }
+                if controller.hasDiscMenu || MediaTitle.offersChoice(controller.titles) {
+                    NavigationRow(controller.isDisc ? "Disc" : "Titles", systemImage: controller.isDisc ? "opticaldisc" : "film.stack", value: currentTitleName) { path.append(.titles) }
+                }
                 if !controller.chapters.isEmpty {
                     NavigationRow("Chapters", systemImage: "list.bullet.rectangle", value: currentChapter?.displayTitle) { path.append(.chapters) }
                 }
@@ -175,7 +191,11 @@ public struct PlaybackOptionsView: View {
     }
 
     private var pictureSummary: String {
-        var parts = [controller.fillMode.title]
+        if controller.isSpherical {
+            return "360\u{00B0}"
+        }
+        var parts = [controller.zoom.isZoomed ? "Zoom \(controller.zoom.title)" : controller.fillMode.title]
+        if !controller.transform.isIdentity { parts.append(controller.transform.summary) }
         if let ratio = controller.aspectRatio { parts.append(ratio.description) }
         if let crop = controller.cropRatio { parts.append("Crop \(crop.description)") }
         if !controller.videoAdjustments.isNeutral { parts.append("Adjusted") }
@@ -195,6 +215,17 @@ public struct PlaybackOptionsView: View {
         case .waitingForEnd: "Loop: set B"
         case .looping: "Looping"
         }
+    }
+
+    /// "Title 2", "Menu", or the title's own name.
+    private var currentTitleName: String? {
+        guard let current = controller.currentTitle else { return nil }
+        if current.isMenu {
+            return current.displayName(number: 0)
+        }
+        return MediaTitle.numbered(controller.titles)
+            .first { $0.title.id == current.id }
+            .map { $0.title.displayName(number: $0.number) }
     }
 
     private var currentChapter: Chapter? {
@@ -246,6 +277,23 @@ public struct PlaybackOptionsView: View {
             ActionRow("Add Subtitle File\u{2026}", systemImage: "doc.badge.plus") {
                 onAddSubtitleFile()
             }
+            if let provider = session.onlineSubtitles, controller.currentItem?.url.isFileURL == true {
+                NavigationRow("Search \(provider.name)", systemImage: "magnifyingglass", value: nil) {
+                    path.append(.onlineSubtitles)
+                }
+            }
+        }
+        if showsSecondSubtitle {
+            OptionsGroup(title: "Second Subtitle", footer: "Shows a second language at the same time, for example to learn one alongside the other.") {
+                CheckRow("Off", isSelected: !controller.subtitleTracks.contains(where: \.isSecondary)) {
+                    controller.selectSecondarySubtitleTrack(nil)
+                }
+                ForEach(controller.subtitleTracks.filter { !$0.isSelected }) { track in
+                    CheckRow(track.displayName(), isSelected: track.isSecondary) {
+                        controller.selectSecondarySubtitleTrack(track)
+                    }
+                }
+            }
         }
         OptionsGroup(title: "Timing", footer: timingFooter) {
             TimingControl(title: "Subtitle Timing", value: controller.subtitleDelay, step: 0.1) { value in
@@ -257,6 +305,96 @@ public struct PlaybackOptionsView: View {
                 Task { await session.setSubtitleSize(size) }
             }
             .padding(14)
+        }
+        OptionsGroup {
+            NavigationRow("Style", systemImage: "textformat", value: controller.subtitleStyle.summary) {
+                path.append(.subtitleStyle)
+            }
+            NavigationRow("Text Encoding", systemImage: "character.book.closed", value: SubtitleEncoding.title(for: controller.subtitleEncoding)) {
+                path.append(.encoding)
+            }
+        }
+    }
+
+    /// Two subtitle tracks at once: VLC only, once one is showing.
+    private var showsSecondSubtitle: Bool {
+        controller.capabilities.contains(.dualSubtitles)
+            && controller.subtitleTracks.count > 1
+            && controller.subtitleTracks.contains(where: \.isSelected)
+    }
+
+    // MARK: Subtitle style
+
+    @ViewBuilder
+    private var subtitleStylePage: some View {
+        let style = controller.subtitleStyle
+        SubtitleStylePreview(style: style, size: controller.subtitleSize)
+        OptionsGroup(title: "Font") {
+            CapsuleChoices(SubtitleStyle.Font.allCases, selection: style.font, title: \.title) { font in
+                update { $0.font = font }
+            }
+            .padding(14)
+            ToggleRow("Bold", isOn: style.isBold) { isBold in
+                update { $0.isBold = isBold }
+            }
+        }
+        OptionsGroup(title: "Colour") {
+            ColourSwatches(selection: style.textColor) { colour in
+                update { $0.textColor = colour }
+            }
+            .padding(14)
+        }
+        OptionsGroup(title: "Outline") {
+            CapsuleChoices(SubtitleStyle.Outline.allCases, selection: style.outline, title: \.title) { outline in
+                update { $0.outline = outline }
+            }
+            .padding(14)
+        }
+        OptionsGroup(title: "Background") {
+            CapsuleChoices(SubtitleStyle.Background.allCases, selection: style.background, title: \.title) { background in
+                update { $0.background = background }
+            }
+            .padding(14)
+        }
+        OptionsGroup(title: "Position", footer: styleFooter) {
+            CapsuleChoices(SubtitleStyle.Position.allCases, selection: style.position, title: \.title) { position in
+                update { $0.position = position }
+            }
+            .padding(14)
+            if !style.isStandard {
+                ActionRow("Use the Default Style", systemImage: "arrow.counterclockwise") {
+                    Task { await session.setSubtitleStyle(.standard) }
+                }
+            }
+        }
+    }
+
+    private var styleFooter: String {
+        var footer = "For subtitles that are plain text (SRT, WebVTT, MP4). Styled subtitles (ASS) keep their own look, and picture subtitles from discs can\u{2019}t be restyled."
+        if controller.activeEngine == .vlc {
+            footer += " The video restarts at the same place to apply a change."
+        }
+        return footer
+    }
+
+    private func update(_ change: (inout SubtitleStyle) -> Void) {
+        var style = controller.subtitleStyle
+        change(&style)
+        Task { await session.setSubtitleStyle(style) }
+    }
+
+    // MARK: Text encoding
+
+    private var encodingPage: some View {
+        OptionsGroup(footer: "For subtitle files that show the wrong letters. Unicode files are always read correctly. The video restarts at the same place to apply a change.") {
+            CheckRow("Automatic", isSelected: controller.subtitleEncoding == nil) {
+                Task { await session.setSubtitleEncoding(nil) }
+            }
+            ForEach(SubtitleEncoding.all) { encoding in
+                CheckRow(encoding.title, isSelected: controller.subtitleEncoding == encoding.id) {
+                    Task { await session.setSubtitleEncoding(encoding.id) }
+                }
+            }
         }
     }
 
@@ -275,11 +413,26 @@ public struct PlaybackOptionsView: View {
 
     @ViewBuilder
     private var picturePage: some View {
-        OptionsGroup(title: "Size", footer: "Fill trims the edges so the picture covers the whole player. On iPhone and iPad, pinch the video to switch.") {
+        if controller.isSpherical {
+            sphericalViewGroup
+        }
+        OptionsGroup(title: "Size", footer: "Fill trims the edges so the picture covers the whole player. Pinch the video to switch, and pinch further to zoom in.") {
             CapsuleChoices(VideoFillMode.allCases, selection: controller.fillMode, title: \.title) { mode in
                 controller.setFillMode(mode)
             }
             .padding(14)
+        }
+        if !controller.isSpherical {
+            OptionsGroup(title: "Zoom", footer: "Drag the video to look around while it\u{2019}s zoomed in.") {
+                ZoomStepper(zoom: controller.zoom) { zoom in
+                    controller.setZoom(zoom)
+                }
+            }
+            OptionsGroup(title: "Turn and Flip", footer: "For videos filmed sideways or mirrored.") {
+                TransformButtons(transform: controller.transform) { transform in
+                    controller.setTransform(transform)
+                }
+            }
         }
         OptionsGroup(title: "Shape") {
             CapsuleChoices([VideoRatio?.none] + VideoRatio.aspectPresets.map(Optional.some), selection: controller.aspectRatio, title: { $0?.title ?? "Original" }) { ratio in
@@ -303,6 +456,35 @@ public struct PlaybackOptionsView: View {
                 Task { await controller.setDeinterlace(mode) }
             }
             .padding(14)
+        }
+        if controller.deinterlace != .off {
+            OptionsGroup(title: "Deinterlacing Method", footer: controller.deinterlaceFilter.detail) {
+                CapsuleChoices(DeinterlaceFilter.allCases, selection: controller.deinterlaceFilter, title: \.title) { filter in
+                    Task { await controller.setDeinterlaceFilter(filter) }
+                }
+                .padding(14)
+            }
+        }
+    }
+
+    /// A 360° video: how close you are, and back to straight ahead.
+    @ViewBuilder
+    private var sphericalViewGroup: some View {
+        let viewpoint = controller.viewpoint
+        OptionsGroup(title: "360\u{00B0} View", footer: "Drag the video to look around. Pinch, or use the slider, to go closer.") {
+            AdjustmentSlider(
+                title: "Field of View",
+                value: viewpoint.fieldOfView,
+                range: Viewpoint.fieldOfViewRange,
+                neutral: Viewpoint.defaultFieldOfView,
+                unit: "\u{00B0}"
+            ) { value in
+                controller.setViewpoint(Viewpoint(yaw: viewpoint.yaw, pitch: viewpoint.pitch, roll: viewpoint.roll, fieldOfView: value))
+            }
+            ActionRow("Look Straight Ahead", systemImage: "scope") {
+                controller.setViewpoint(.straightAhead)
+            }
+            .disabled(viewpoint.isStraightAhead)
         }
     }
 
@@ -370,10 +552,30 @@ public struct PlaybackOptionsView: View {
             }
         }
         if !isVideo {
+            OptionsGroup(title: "Sound Check", footer: soundCheckFooter) {
+                CapsuleChoices(ReplayGainMode.allCases, selection: controller.replayGain.mode, title: \.title) { [session] mode in
+                    var settings = controller.replayGain
+                    settings.mode = mode
+                    Task { await session.setReplayGain(settings) }
+                }
+                .padding(14)
+            }
             OptionsGroup(title: "Channels") {
                 stereoRows
             }
         }
+    }
+
+    /// What levelling does to this song.
+    private var soundCheckFooter: String {
+        let base = "Plays songs at the same loudness, using the ReplayGain values saved in them."
+        guard controller.replayGain.mode != .off, let item = controller.currentItem else { return base }
+        guard item.replayGain?.hasGain == true else {
+            return base + " This song has none, so it plays as recorded."
+        }
+        let gain = controller.replayGain.gain(for: item.replayGain)
+        let text = gain.formatted(.number.precision(.fractionLength(1)))
+        return base + " This song plays \(gain > 0 ? "+" : "")\(text) dB."
     }
 
     @ViewBuilder
@@ -383,6 +585,44 @@ public struct PlaybackOptionsView: View {
                 Task { await controller.setStereoMode(mode) }
             }
         }
+    }
+
+    // MARK: Titles
+
+    @ViewBuilder
+    private var titlesPage: some View {
+        if controller.hasDiscMenu {
+            OptionsGroup(footer: controller.isShowingDiscMenu ? "Choose with the arrows and Select below the menu, or with the keyboard\u{2019}s arrow keys and Return." : nil) {
+                ActionRow("Go to Disc Menu", systemImage: "opticaldisc") {
+                    controller.navigateDisc(.menu)
+                    onClose()
+                }
+                if controller.currentItem?.disc == .bluray {
+                    ActionRow("Pop-Up Menu", systemImage: "rectangle.stack") {
+                        controller.navigateDisc(.popUpMenu)
+                        onClose()
+                    }
+                }
+            }
+        }
+        let numbered = MediaTitle.numbered(controller.titles)
+        if !numbered.isEmpty {
+            OptionsGroup(title: "Titles") {
+                ForEach(numbered, id: \.title.id) { entry in
+                    CheckRow(entry.title.displayName(number: entry.number), detail: titleDetail(entry.title), isSelected: entry.title.id == controller.currentTitleIndex) {
+                        controller.selectTitle(entry.title)
+                        onClose()
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Main Feature · 1:52:04 · 24 chapters" for a disc's film.
+    private func titleDetail(_ title: MediaTitle) -> String? {
+        let isMain = controller.isDisc && MediaTitle.offersChoice(controller.titles) && title.id == controller.mainTitle?.id
+        let parts = [isMain ? "Main Feature" : nil, title.details].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
     }
 
     // MARK: Chapters
@@ -558,8 +798,16 @@ private struct MediaInfoPage: View {
 
     @ViewBuilder
     private var fileGroup: some View {
-        OptionsGroup(title: "File") {
-            if let url = controller.currentItem?.url {
+        OptionsGroup(title: controller.isDisc ? "Disc" : "File") {
+            if let item = controller.currentItem, let disc = item.disc {
+                // A disc's folder is VIDEO_TS (or the one holding BDMV); name the one around it.
+                let folder = item.url.lastPathComponent.uppercased() == "VIDEO_TS" ? item.url.deletingLastPathComponent() : item.url
+                InfoRow("Name", value: folder.lastPathComponent)
+                InfoRow("Format", value: DiscLayout.imageExtensions.contains(item.url.pathExtension.lowercased()) ? "\(disc.title) image" : "\(disc.title) folder")
+                if let title = controller.currentTitle {
+                    InfoRow("Playing", value: title.isMenu ? "Menu" : MediaTitle.numbered(controller.titles).first { $0.title.id == title.id }.map { $0.title.displayName(number: $0.number) } ?? "Title")
+                }
+            } else if let url = controller.currentItem?.url {
                 InfoRow("Name", value: url.isFileURL ? url.lastPathComponent : url.absoluteString)
                 if let format = ContainerFormat(url: url).displayName {
                     InfoRow("Format", value: format)
@@ -618,8 +866,8 @@ private struct MediaInfoPage: View {
     /// The engine to offer switching to, if it can open this file at all.
     private func otherEngine(than engine: EngineKind) -> EngineKind? {
         guard engine == .vlc else { return .vlc }
-        guard let url = controller.currentItem?.url,
-              ContainerFormat(url: url).support != .vlcOnly else { return nil }
+        guard let item = controller.currentItem, item.disc == nil,
+              ContainerFormat(url: item.url).support != .vlcOnly else { return nil }
         return .avFoundation
     }
 
@@ -685,6 +933,74 @@ struct PlayerOptionsLayer: View {
 }
 
 // MARK: - Building blocks
+
+/// A line of sample text in the chosen subtitle style, over a dark frame.
+private struct SubtitleStylePreview: View {
+    let style: SubtitleStyle
+    let size: SubtitleSize
+
+    var body: some View {
+        let colour = style.textColor.components
+        let text = Text("The tide turns at midnight.")
+            .font(.custom(style.font == .standard ? "Helvetica Neue" : style.font.familyName, size: 17 * CGFloat(size.scale)))
+            .fontWeight(style.isBold ? .bold : .medium)
+            .foregroundStyle(Color(red: colour.red, green: colour.green, blue: colour.blue))
+        ZStack(alignment: style.position == .bottom ? .bottom : .center) {
+            LinearGradient(colors: [Color(white: 0.32), Color(white: 0.12)], startPoint: .top, endPoint: .bottom)
+            text
+                .multilineTextAlignment(.center)
+                .shadow(color: .black.opacity(style.outline == .none ? 0 : 0.9), radius: CGFloat(style.outline.thickness) / 2)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.black.opacity(Double(style.background.opacity) / 255), in: RoundedRectangle(cornerRadius: 4))
+                .padding(.bottom, style.position == .bottom ? 14 : 0)
+        }
+        .frame(height: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityElement()
+        .accessibilityLabel(Text("Preview of the subtitle style"))
+    }
+}
+
+/// The text colours as round swatches.
+private struct ColourSwatches: View {
+    let selection: SubtitleStyle.TextColor
+    let onSelect: (SubtitleStyle.TextColor) -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(SubtitleStyle.TextColor.allCases) { colour in
+                let components = colour.components
+                let isSelected = colour == selection
+                Button {
+                    onSelect(colour)
+                } label: {
+                    Circle()
+                        .fill(Color(red: components.red, green: components.green, blue: components.blue))
+                        .frame(width: 30, height: 30)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(.white, lineWidth: isSelected ? 3 : 0)
+                                .padding(-5)
+                        }
+                        .overlay {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.black)
+                            }
+                        }
+                        .frame(width: 40, height: 40)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(colour.title))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
 
 /// A rounded group of rows, like an inset grouped list on iOS.
 private struct OptionsGroup<Content: View>: View {
@@ -1002,6 +1318,224 @@ private struct AdjustmentSlider: View {
             return "\(Int((value / max(neutral, 0.0001) * 100).rounded()))%"
         }
         return "\(Int(value.rounded()))\(unit)"
+    }
+}
+
+/// Subtitles found online for what's playing: in your language first (all
+/// languages on request), files made for this exact release at the top.
+private struct OnlineSubtitlesPage: View {
+    @Environment(PlaybackSession.self) private var session
+    @State private var phase = Phase.searching
+    @State private var allLanguages = false
+    @State private var adding: OnlineSubtitle.ID?
+    let onAdded: () -> Void
+
+    enum Phase {
+        case searching
+        case results([OnlineSubtitle])
+        case failed(String)
+    }
+
+    private var language: String {
+        let preferences = session.controller.trackPreferences
+        return preferences.subtitleLanguage ?? session.controller.appLanguage
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            OptionsGroup {
+                ToggleRow("All Languages", isOn: allLanguages) { allLanguages = $0 }
+            }
+            switch phase {
+            case .searching:
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Searching\u{2026}")
+                        .foregroundStyle(Palette.secondaryOnDark)
+                }
+                .padding(.horizontal, 6)
+            case .failed(let message):
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(Palette.secondaryOnDark)
+                    .padding(.horizontal, 6)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .results(let subtitles) where subtitles.isEmpty:
+                Text("Nothing found\(allLanguages ? "" : " in \(MediaTrack.languageName(for: language) ?? language)"). Try All Languages.")
+                    .font(.callout)
+                    .foregroundStyle(Palette.secondaryOnDark)
+                    .padding(.horizontal, 6)
+            case .results(let subtitles):
+                OptionsGroup(footer: "Files marked \u{201C}Made for This File\u{201D} were timed for this exact release.") {
+                    ForEach(subtitles.prefix(40)) { subtitle in
+                        row(subtitle)
+                    }
+                }
+            }
+        }
+        .task(id: allLanguages) {
+            await search()
+        }
+    }
+
+    private func row(_ subtitle: OnlineSubtitle) -> some View {
+        Button {
+            add(subtitle)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(MediaTrack.languageName(for: subtitle.language) ?? subtitle.language)
+                        .font(.body.weight(.semibold))
+                    Text(subtitle.release)
+                        .font(.caption)
+                        .foregroundStyle(Palette.secondaryOnDark)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    let tags = Self.tags(for: subtitle)
+                    if !tags.isEmpty {
+                        Text(tags)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(subtitle.matchesFile ? Palette.brandOrange : Palette.tertiaryOnDark)
+                    }
+                }
+                Spacer(minLength: 8)
+                if adding == subtitle.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Palette.secondaryOnDark)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(adding != nil)
+        .accessibilityHint(Text("Downloads and shows these subtitles"))
+    }
+
+    /// "Made for This File · SDH · 12,431 downloads".
+    private static func tags(for subtitle: OnlineSubtitle) -> String {
+        var tags: [String] = []
+        if subtitle.matchesFile { tags.append("Made for This File") }
+        if subtitle.isHearingImpaired { tags.append("SDH") }
+        if subtitle.isForeignPartsOnly { tags.append("Foreign Parts Only") }
+        if subtitle.isMachineTranslated { tags.append("Machine Translated") }
+        if subtitle.downloadCount > 0 {
+            tags.append("\(subtitle.downloadCount.formatted()) downloads")
+        }
+        return tags.joined(separator: " \u{00B7} ")
+    }
+
+    private func search() async {
+        phase = .searching
+        do {
+            let results = try await session.searchOnlineSubtitles(languages: allLanguages ? [] : [language])
+            guard !Task.isCancelled else { return }
+            phase = .results(results)
+        } catch {
+            guard !Task.isCancelled else { return }
+            phase = .failed(error.localizedDescription)
+        }
+    }
+
+    private func add(_ subtitle: OnlineSubtitle) {
+        adding = subtitle.id
+        Task {
+            do {
+                try await session.addOnlineSubtitle(subtitle)
+                session.announce("Subtitles Added")
+                adding = nil
+                onAdded()
+            } catch {
+                adding = nil
+                phase = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+/// − and + around the magnification, and back to the whole picture.
+private struct ZoomStepper: View {
+    let zoom: VideoZoom
+    let onChange: (VideoZoom) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            stepButton("Zoom Out", systemImage: "minus.magnifyingglass", isEnabled: zoom.isZoomed) {
+                onChange(zoom.stepped(up: false))
+            }
+            Text(zoom.isZoomed ? zoom.title : "Whole Picture")
+                .font(.callout.weight(.semibold).monospacedDigit())
+                .frame(maxWidth: .infinity)
+                .contentTransition(.numericText())
+            stepButton("Zoom In", systemImage: "plus.magnifyingglass", isEnabled: zoom.scale < VideoZoom.maximumScale) {
+                onChange(zoom.stepped(up: true))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .animation(Motion.quick, value: zoom.scale)
+    }
+
+    private func stepButton(_ title: String, systemImage: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 36)
+                .background(.white.opacity(0.12), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityLabel(Text(title))
+    }
+}
+
+/// Turn left or right, flip either way, and undo it all.
+private struct TransformButtons: View {
+    let transform: VideoTransform
+    let onChange: (VideoTransform) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                button("Turn Left", systemImage: "rotate.left") { onChange(transform.rotated(clockwise: false)) }
+                button("Turn Right", systemImage: "rotate.right") { onChange(transform.rotated(clockwise: true)) }
+                button("Flip Horizontally", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") { onChange(transform.flippedHorizontally()) }
+                button("Flip Vertically", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down") { onChange(transform.flippedVertically()) }
+            }
+            .padding(14)
+            if !transform.isIdentity {
+                Divider().overlay(.white.opacity(0.08))
+                ActionRow("Undo \(transform.summary)", systemImage: "arrow.counterclockwise") {
+                    onChange(.identity)
+                }
+            }
+        }
+    }
+
+    private func button(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(height: 22)
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
     }
 }
 

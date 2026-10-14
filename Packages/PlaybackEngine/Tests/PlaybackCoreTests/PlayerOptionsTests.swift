@@ -179,3 +179,45 @@ struct TypedTimeTests {
         #expect(PlaybackTimeFormatter.seconds(from: "12h30") == nil)
     }
 }
+
+@Suite("Subtitle style")
+struct SubtitleStyleTests {
+    @Test func theStandardStyleLeavesVLCAlone() {
+        #expect(SubtitleStyle.standard.libVLCOptions.isEmpty)
+        #expect(SubtitleStyle.standard.summary == "Default")
+        #expect(EngineConfiguration().libVLCLibraryOptions == ["--no-play-and-pause", "--network-caching=1000"])
+    }
+
+    @Test func aStyleBecomesTextRendererOptions() {
+        let style = SubtitleStyle(font: .serif, textColor: .yellow, isBold: true, outline: .thick, background: .translucent, position: .raised)
+        #expect(style.libVLCOptions == [
+            "--freetype-font=Georgia",
+            "--freetype-color=\(0xFFE14D)",
+            "--freetype-outline-thickness=6",
+            "--freetype-bold",
+            "--freetype-background-opacity=150",
+            "--freetype-background-color=0",
+            "--sub-margin=50",
+        ])
+        #expect(style.summary == "Yellow \u{00B7} Serif \u{00B7} Bold \u{00B7} See-Through Background \u{00B7} Outline Thick \u{00B7} Raised")
+    }
+
+    @Test func customOptionsStillWin() {
+        let configuration = EngineConfiguration(customLibVLCOptions: "--freetype-color=255", subtitleStyle: SubtitleStyle(textColor: .green))
+        let options = configuration.libVLCLibraryOptions
+        let colours = options.filter { $0.hasPrefix("--freetype-color=") }
+        #expect(colours.last == "--freetype-color=255")
+    }
+
+    @Test func encodingIsAMediaOption() {
+        #expect(EngineConfiguration(subtitleEncoding: "Windows-1251").libVLCMediaOptions == [":subsdec-encoding=Windows-1251"])
+        #expect(EngineConfiguration().libVLCMediaOptions.isEmpty)
+        #expect(SubtitleEncoding.title(for: nil) == "Automatic")
+        #expect(SubtitleEncoding.title(for: "Big5") == "Chinese, Traditional (Big5)")
+    }
+
+    @Test func colourComponents() {
+        let white = SubtitleStyle.TextColor.white.components
+        #expect(white.red == 1 && white.green == 1 && white.blue == 1)
+    }
+}

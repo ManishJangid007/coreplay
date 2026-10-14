@@ -35,6 +35,12 @@ public struct EngineRouter: Sendable {
         case handoff
         /// The equalizer is on, and only VLC has one.
         case equalizer
+        /// A 360° video: VLC lets you look around it.
+        case sphericalVideo
+        /// Options you chose for this file last time (timing, shape, crop) need VLC.
+        case rememberedOptions
+        /// A DVD or Blu-ray, which VLC plays with its menus.
+        case disc(DiscKind)
 
         /// Plain-language explanation for the Media Info panel.
         public var explanation: String {
@@ -54,6 +60,9 @@ public struct EngineRouter: Sendable {
             case .nativelySupported: "Every track is natively supported"
             case .handoff: "Switched engines during playback"
             case .equalizer: "The equalizer is on"
+            case .sphericalVideo: "360\u{00B0} video plays with VLC"
+            case .rememberedOptions: "Options you chose for this file use VLC"
+            case .disc(let kind): "\(kind == .dvd ? "DVDs" : "Blu-ray discs") play with VLC, menus included"
             }
         }
     }
@@ -71,6 +80,9 @@ public struct EngineRouter: Sendable {
         case .vlc: return Decision(engine: .vlc, reason: .itemOverride)
         case .avFoundation: return Decision(engine: .avFoundation, reason: .itemOverride)
         case .automatic: break
+        }
+        if let disc = item.disc {
+            return Decision(engine: .vlc, reason: .disc(disc))
         }
         if alwaysUseVLC {
             return Decision(engine: .vlc, reason: .alwaysUseVLCSetting)
@@ -113,6 +125,9 @@ public struct EngineRouter: Sendable {
         if probe.hasProtectedContent {
             // Only AVFoundation can play FairPlay-protected files (e.g. old iTunes purchases).
             return Decision(engine: .avFoundation, reason: .protectedContent)
+        }
+        if probe.projection.isSpherical {
+            return Decision(engine: .vlc, reason: .sphericalVideo)
         }
 
         var sawAudioOrVideo = false

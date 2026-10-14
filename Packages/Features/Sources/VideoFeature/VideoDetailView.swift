@@ -5,24 +5,20 @@ import PlaybackCore
 import SwiftData
 import SwiftUI
 
-/// A movie's (or home video's) page, as in the TV app: the backdrop with the
-/// title over it, Play or Resume, badges, the synopsis, cast and details.
+/// A movie's (or home video's) page, as Netflix and the TV app show them:
+/// the picture fills the whole page behind everything, and the title, what
+/// it is, Play or Resume, the synopsis and who's in it sit over it. The cast
+/// and the details follow as the page scrolls, over the darkened picture.
 public struct VideoDetailView: View {
     @Environment(LibraryManager.self) private var library
-    @Environment(PlaybackSession.self) private var session
-    @Environment(\.appActions) private var actions
-    @Environment(\.videoSheets) private var sheets
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
+    @State private var scrollOffset: CGFloat = 0
     private let video: Video
 
     public init(video: Video) {
         self.video = video
-    }
-
-    private var playback: VideoPlayback {
-        VideoPlayback(library: library, session: session, actions: actions)
     }
 
     private var isCompact: Bool {
@@ -33,92 +29,100 @@ public struct VideoDetailView: View {
         #endif
     }
 
+    private var sidePadding: CGFloat {
+        isCompact ? Metrics.contentPadding : 48
+    }
+
     public var body: some View {
-        let state = library.watchState(for: video)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                hero(state)
-                VStack(alignment: .leading, spacing: 24) {
-                    if let tagline = video.tagline {
-                        Text(tagline)
-                            .font(.title3.italic())
-                            .foregroundStyle(.secondary)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VideoDetailHeader(video: video, isCompact: isCompact, sidePadding: sidePadding)
+                        .frame(minHeight: max(proxy.size.height * 0.8, isCompact ? 520 : 560), alignment: .bottomLeading)
+                    VStack(alignment: .leading, spacing: 30) {
+                        if !video.cast.isEmpty {
+                            CastShelf(cast: video.cast)
+                        }
+                        VideoDetailsSection(video: video)
                     }
-                    if let overview = video.overview {
-                        Text(overview)
-                            .font(.body)
-                            .frame(maxWidth: 760, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-                    if !video.cast.isEmpty {
-                        CastShelf(cast: video.cast)
-                    }
-                    VideoDetailsSection(video: video)
+                    .padding(.horizontal, sidePadding)
+                    .padding(.top, 34)
+                    .padding(.bottom, 48)
                 }
-                .padding(Metrics.contentPadding)
-                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                scrollOffset = offset
+            }
+            .background {
+                DetailBackdrop(
+                    url: library.artworkURL(Self.wideArtworkKey(video), .large),
+                    fallbackURL: library.artworkURL(video.posterArtworkKey, .large),
+                    dimming: min(max(scrollOffset / 420, 0), 1)
+                )
             }
         }
         .ignoresSafeArea(edges: .top)
+        .environment(\.colorScheme, .dark)
         .navigationTitle(video.displayTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    VideoMenuItems(video: video)
-                } label: {
-                    Label("More", systemImage: "ellipsis")
-                }
-            }
-        }
     }
 
-    // MARK: Hero
+    /// A wide picture for the page: a backdrop, the chosen artwork, a still
+    /// or a frame. Without one, the poster is shown blurred.
+    static func wideArtworkKey(_ video: Video) -> String? {
+        video.backdropKey ?? video.customArtworkKey ?? video.stillKey ?? video.thumbnailKey
+    }
+}
 
-    private func hero(_ state: WatchState?) -> some View {
-        let height: CGFloat = isCompact ? 420 : 520
-        return ZStack(alignment: .bottomLeading) {
-            HeroBackdrop(imageURL: library.artworkURL(video.backdropArtworkKey ?? video.posterArtworkKey, .large), height: height)
-            HStack(alignment: .bottom, spacing: 24) {
-                if !isCompact, video.kind == .movie {
-                    poster
-                        .frame(width: 180)
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(video.displayTitle)
-                        .font(.largeTitle.bold())
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.7)
-                    if let line = infoLine, !line.isEmpty {
-                        Text(line)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.8))
-                    }
-                    VideoBadges(file: video.file)
-                        .environment(\.colorScheme, .dark)
-                    buttons(state)
-                        .padding(.top, 6)
-                }
-                .foregroundStyle(.white)
-                Spacer(minLength: 0)
-            }
-            .padding(Metrics.contentPadding)
-            .padding(.bottom, 8)
-        }
+/// The words and buttons over a movie's picture: what it is, the title, a
+/// line of details, badges, Play or Resume and the other actions, the
+/// synopsis and who's in it.
+struct VideoDetailHeader: View {
+    @Environment(LibraryManager.self) private var library
+    @Environment(PlaybackSession.self) private var session
+    @Environment(\.appActions) private var actions
+    @State private var showsFullOverview = false
+    let video: Video
+    let isCompact: Bool
+    let sidePadding: CGFloat
+
+    private var playback: VideoPlayback {
+        VideoPlayback(library: library, session: session, actions: actions)
     }
 
-    @ViewBuilder
-    private var poster: some View {
-        if let url = library.artworkURL(video.posterArtworkKey, .large) {
-            ArtworkView(url: url, shape: .poster, maxPixelSize: 600)
-                .artworkShadow()
-        } else {
-            GeneratedPoster(imageURL: library.artworkURL(video.stillArtworkKey, .grid), title: video.displayTitle, subtitle: video.year.map(String.init))
-                .artworkShadow()
+    var body: some View {
+        let state = library.watchState(for: video)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(video.kind == .homeVideo ? "Home Video" : "Movie")
+                .font(.caption.weight(.bold))
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(.white.opacity(0.7))
+            HeroTitle(video.displayTitle, size: isCompact ? 44 : 66)
+            if let line = infoLine, !line.isEmpty {
+                Text(line)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            VideoBadges(file: video.file)
+            buttons(state)
+                .padding(.vertical, 4)
+            if let overview = video.overview ?? video.tagline {
+                overviewText(overview)
+            }
+            credits
         }
+        .foregroundStyle(.white)
+        .frame(maxWidth: 680, alignment: .leading)
+        .padding(.horizontal, sidePadding)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var infoLine: String? {
@@ -143,45 +147,132 @@ public struct VideoDetailView: View {
                 playback.play(video)
             } label: {
                 Label(state?.isInProgress == true ? "Resume" : "Play", systemImage: "play.fill")
-                    .frame(minWidth: 110)
+                    .frame(minWidth: isCompact ? 120 : 96)
             }
-            .buttonStyle(.glassProminent)
-            .controlSize(.large)
+            .buttonStyle(HeroPlayButtonStyle(progress: state?.progress))
             .disabled(!video.isAvailable)
 
             if state?.isInProgress == true {
-                Button {
+                HeroCircleButton("Play from Beginning", systemImage: "arrow.counterclockwise") {
                     playback.play(video, fromStart: true)
-                } label: {
-                    Label("Play from Beginning", systemImage: "arrow.counterclockwise")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.glass)
-                .controlSize(.large)
-                .help("Play from Beginning")
             }
-
-            Button {
-                if state?.isWatched == true {
+            if video.kind == .movie {
+                let isOnList = library.isOnWatchlist(video)
+                HeroCircleButton(isOnList ? "Remove from Watchlist" : "Add to Watchlist", systemImage: isOnList ? "checkmark" : "plus") {
+                    library.toggleWatchlist(video)
+                }
+            }
+            let isWatched = state?.isWatched == true
+            HeroCircleButton(isWatched ? "Mark as Unwatched" : "Mark as Watched", systemImage: isWatched ? "eye.slash" : "eye") {
+                if isWatched {
                     library.markUnwatched([video])
                 } else {
                     library.markWatched([video])
                 }
-            } label: {
-                Label(state?.isWatched == true ? "Watched" : "Mark as Watched", systemImage: state?.isWatched == true ? "checkmark.circle.fill" : "checkmark.circle")
-                    .labelStyle(.iconOnly)
-                    .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(.glass)
-            .controlSize(.large)
-            .help(state?.isWatched == true ? "Mark as Unwatched" : "Mark as Watched")
+            Menu {
+                VideoMenuItems(video: video)
+            } label: {
+                HeroCircleLabel(systemImage: "ellipsis")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(Text("More"))
 
-            if let remaining = state?.remaining {
+            if !isCompact, let remaining = state?.remaining {
                 Text(VideoFormat.remaining(remaining))
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.8))
             }
         }
+    }
+
+    private func overviewText(_ overview: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(overview)
+                .font(.body)
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(4)
+            if overview.count > 240 {
+                Button("More") {
+                    showsFullOverview = true
+                }
+                .buttonStyle(.plain)
+                .font(.subheadline.weight(.bold))
+                .popover(isPresented: $showsFullOverview) {
+                    OverviewPopover(title: video.displayTitle, text: overview)
+                }
+            }
+        }
+        .frame(maxWidth: 620, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var credits: some View {
+        let names = video.cast.prefix(4).map(\.name)
+        if !names.isEmpty || !video.directors.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                if !names.isEmpty {
+                    Text("Starring \(names.joined(separator: ", "))")
+                }
+                if !video.directors.isEmpty {
+                    Text("\(video.directors.count == 1 ? "Director" : "Directors") \(video.directors.joined(separator: ", "))")
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.white.opacity(0.7))
+            .lineLimit(2)
+        }
+    }
+}
+
+/// The picture behind a detail page, filling it: shaded on the left for the
+/// words, darkening towards the bottom for the rows below, and further as
+/// the page scrolls (`dimming`, 0 to 1).
+struct DetailBackdrop: View {
+    /// A wide picture.
+    let url: URL?
+    /// Shown blurred when there's no wide picture (a poster).
+    let fallbackURL: URL?
+    var dimming: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let url {
+                FilledArtwork(url: url, maxPixelSize: 2_000)
+            } else if let fallbackURL {
+                FilledArtwork(url: fallbackURL, maxPixelSize: 500)
+                    .blur(radius: 40, opaque: true)
+                    .opacity(0.9)
+            }
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.8), location: 0),
+                    .init(color: .black.opacity(0.45), location: 0.45),
+                    .init(color: .clear, location: 0.8),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.4), location: 0),
+                    .init(color: .clear, location: 0.2),
+                    .init(color: .black.opacity(0.3), location: 0.5),
+                    .init(color: .black.opacity(0.85), location: 0.8),
+                    .init(color: .black, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            Color.black.opacity(0.7 * dimming)
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 }
 

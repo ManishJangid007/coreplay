@@ -55,6 +55,43 @@ struct PlayerSnapshotTests {
         return session
     }
 
+    /// A DVD showing its menu: the remote replaces the transport.
+    private func discSession(titleIndex: Int = 0) -> PlaybackSession {
+        let session = PlaybackSession()
+        var item = PlaybackItem(url: URL(fileURLWithPath: "/Movies/Heat (1995)/VIDEO_TS", isDirectory: true), kind: .video, title: "Heat", artist: "1995 \u{00B7} Crime")
+        item.disc = .dvd
+        session.controller.showPreview(
+            item: item,
+            duration: titleIndex == 0 ? 0 : 6_724,
+            time: titleIndex == 0 ? 0 : 1_250,
+            isPlaying: true,
+            dimensions: VideoDimensions(width: 720, height: 480),
+            titles: [
+                MediaTitle(id: 0, name: "DVD Menu", isMenu: true, isInteractive: true),
+                MediaTitle(id: 1, duration: 6_724, chapterCount: 24),
+                MediaTitle(id: 2, duration: 754, chapterCount: 3),
+                MediaTitle(id: 3, name: "Trailer", duration: 132),
+            ],
+            currentTitleIndex: titleIndex
+        )
+        return session
+    }
+
+    @Test func discMenu() throws {
+        let view = VideoPlayerView(onClose: {})
+            .environment(discSession())
+            .frame(width: 1_280, height: 720)
+            .background(LinearGradient(colors: [Color(red: 0.12, green: 0.19, blue: 0.38), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
+        try render(view, name: "video-disc-menu")
+        // An iPhone held upright: the remote must fit above the buttons.
+        let compact = VideoPlayerView(onClose: {})
+            .environment(discSession())
+            .frame(width: 393, height: 852)
+            .background(Color(red: 0.12, green: 0.19, blue: 0.38))
+        try render(compact, name: "video-disc-menu-compact")
+        try render(optionsPages([nil, .titles], isVideo: true, session: discSession(titleIndex: 1)), name: "options-disc")
+    }
+
     private func songSession() -> PlaybackSession {
         let session = PlaybackSession()
         let item = PlaybackItem(url: URL(fileURLWithPath: "/Music/Angel.flac"), kind: .audio, title: "Angel", artist: "Massive Attack", albumTitle: "Mezzanine")
@@ -101,6 +138,10 @@ struct PlayerSnapshotTests {
         try render(optionsPages([nil, .audio, .subtitles, .speed], isVideo: true, session: session), name: "options-video-1")
         try render(optionsPages([.picture, .colours, .sound], isVideo: true, session: session), name: "options-video-2")
         try render(optionsPages([.chapters, .tools, .info], isVideo: true, session: session), name: "options-video-3")
+        // The controller, not the session, so the test's defaults aren't touched.
+        await session.controller.setSubtitleStyle(SubtitleStyle(font: .rounded, textColor: .yellow, isBold: true, background: .translucent, position: .raised))
+        await session.controller.setSubtitleEncoding("Windows-1251")
+        try render(optionsPages([.subtitles, .subtitleStyle, .encoding], isVideo: true, session: session), name: "options-video-4")
     }
 
     @Test func musicOptionsPages() throws {

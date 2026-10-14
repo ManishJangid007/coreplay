@@ -53,6 +53,16 @@ final class AppModel {
         settings.onEngineConfigurationChange = { configuration in
             session.updateConfiguration(configuration)
         }
+        // Songs are levelled with the ReplayGain values in their tags.
+        session.replayGainLookup = { url in
+            await ReplayGainLookup.values(at: url)
+        }
+        // Subtitles from OpenSubtitles, when a key is saved in Settings.
+        session.onlineSubtitles = OpenSubtitlesProvider.saved()
+        let library = self.library
+        session.subtitleSearchRequest = { item in
+            library.subtitleSearchRequest(for: item)
+        }
         connectPictureInPicture()
     }
 
@@ -141,16 +151,21 @@ final class AppModel {
                     self.library.recordPlay(libraryID: libraryID)
                 }
                 // Videos from the library: resume positions and watched state.
+                // A disc counts only while its film plays, not its menus or extras.
                 let videoID = item?.kind == .video && item?.libraryID != nil ? item?.id : nil
                 let credits = UpNextPolicy.creditsStart(chapters: controller.chapters, duration: controller.duration)
-                for save in progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying, creditsStart: credits) {
+                let saves = videoID != nil && !controller.isPlayingMainTitle
+                    ? []
+                    : progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying, creditsStart: credits)
+                for save in saves {
                     guard let libraryID = libraryIDs[save.itemID] else { continue }
                     self.library.recordProgress(libraryID: libraryID, position: save.position, duration: save.duration, outcome: save.outcome)
                     if save.itemID != item?.id {
                         libraryIDs[save.itemID] = nil
                     }
                 }
-                if let item, let libraryID = item.libraryID, timedItem != item.id, let duration = controller.duration {
+                if let item, let libraryID = item.libraryID, timedItem != item.id, controller.isPlayingMainTitle,
+                   let duration = controller.duration {
                     timedItem = item.id
                     self.library.noteDuration(duration, libraryID: libraryID)
                 }
@@ -164,8 +179,29 @@ final class AppModel {
     /// - Parameter securityScoped: `true` for URLs from the Files picker or
     ///   "Open in…", which need security-scoped access while playing.
     func open(_ urls: [URL], securityScoped: Bool) {
-        let candidates = urls.filter { url in
-            !url.isFileURL || MediaFileTypes.isLikelyPlayable(url)
+        // Playlist files (M3U, PLS, XSPF, cue sheets) open as the list they hold.
+        // (Only files: a stream's .pls or .m3u link goes to VLC, which follows it.)
+        let playlists = urls.filter { $0.isFileURL && PlaylistFile.format(of: $0) != nil }
+        if !playlists.isEmpty {
+            openPlaylists(playlists, securityScoped: securityScoped)
+            return
+        }
+        // Folders: a DVD or Blu-ray plays as the disc; any other folder plays
+        // what's in it, as in VLC.
+        var expanded: [URL] = []
+        for url in urls.sorted(by: { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }) {
+            if url.isFileURL, MediaFileTypes.isFolder(url), DiscLayout.disc(at: url) == nil {
+                expanded += MediaFileTypes.mediaFiles(in: url)
+            } else {
+                #if os(macOS)
+                expanded.append(discFolderAccess(for: url))
+                #else
+                expanded.append(url)
+                #endif
+            }
+        }
+        let candidates = expanded.filter { url in
+            !url.isFileURL || MediaFileTypes.isFolder(url) || MediaFileTypes.isLikelyPlayable(url)
         }
         guard !candidates.isEmpty else {
             if !urls.isEmpty {
@@ -176,7 +212,6 @@ final class AppModel {
             return
         }
         let items = candidates
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             .map { PlaybackItem(url: $0, requiresSecurityScope: securityScoped && $0.isFileURL) }
         let firstKind = items.first?.kind
         Task {
@@ -184,6 +219,89 @@ final class AppModel {
         }
         presentPlayer(expectingVideo: firstKind != .audio)
     }
+
+    /// Reads playlist files and plays what they list, in order.
+    private func openPlaylists(_ urls: [URL], securityScoped: Bool) {
+        var items: [PlaybackItem] = []
+        var unreadable = 0
+        for url in urls {
+            let isScoped = securityScoped && url.startAccessingSecurityScopedResource()
+            defer {
+                if isScoped { url.stopAccessingSecurityScopedResource() }
+            }
+            guard let entries = try? PlaylistFile.entries(at: url) else {
+                unreadable += 1
+                continue
+            }
+            items += entries.map(\.playbackItem)
+        }
+        guard !items.isEmpty else {
+            openErrorMessage = unreadable > 0
+                ? "Coreplay couldn\u{2019}t read \u{201C}\(urls[0].lastPathComponent)\u{201D}."
+                : "\u{201C}\(urls[0].lastPathComponent)\u{201D} doesn\u{2019}t list anything to play."
+            return
+        }
+        #if os(macOS)
+        grantAccessIfNeeded(to: items)
+        #endif
+        let firstKind = items.first?.kind
+        Task {
+            await session.play(items)
+        }
+        presentPlayer(expectingVideo: firstKind != .audio)
+    }
+
+    #if os(macOS)
+    /// Folders the user let Coreplay into (for playlists and DVDs), open for the rest of the session.
+    @ObservationIgnored private var grantedFolders: [URL] = []
+
+    /// An IFO file opened by itself plays its DVD, which needs the VIDEO_TS
+    /// folder around it. The sandbox only opens that folder once you choose it.
+    private func discFolderAccess(for url: URL) -> URL {
+        let fileExtension = url.pathExtension.lowercased()
+        guard url.isFileURL, fileExtension == "ifo" || fileExtension == "bup" else { return url }
+        let folder = url.deletingLastPathComponent()
+        guard folder.lastPathComponent.uppercased() == "VIDEO_TS" else { return url }
+        if (try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))) != nil {
+            return folder
+        }
+        let panel = NSOpenPanel()
+        panel.message = "To play this DVD, allow Coreplay to open its VIDEO_TS folder."
+        panel.prompt = "Allow"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = folder
+        guard panel.runModal() == .OK, let granted = panel.url else { return url }
+        if granted.startAccessingSecurityScopedResource() {
+            grantedFolders.append(granted)
+        }
+        return granted
+    }
+
+    /// A playlist names files Coreplay may not be allowed to open (the app
+    /// only gets the playlist itself). Asks once for their folder.
+    private func grantAccessIfNeeded(to items: [PlaybackItem]) {
+        let blocked = items.map(\.url).filter { $0.isFileURL && !FileManager.default.isReadableFile(atPath: $0.path(percentEncoded: false)) }
+        guard let first = blocked.first else { return }
+        // The deepest folder holding every unreadable file.
+        var folder = first.deletingLastPathComponent()
+        while !blocked.allSatisfy({ $0.path(percentEncoded: false).hasPrefix(folder.path(percentEncoded: false)) }), folder.pathComponents.count > 1 {
+            folder = folder.deletingLastPathComponent()
+        }
+        let panel = NSOpenPanel()
+        panel.message = "To play this playlist, allow Coreplay to open the folder its files are in."
+        panel.prompt = "Allow"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = folder
+        guard panel.runModal() == .OK, let granted = panel.url else { return }
+        if granted.startAccessingSecurityScopedResource() {
+            grantedFolders.append(granted)
+        }
+    }
+    #endif
 
     /// Handles `onOpenURL`: file URLs from Files / Finder, and
     /// `coreplay://open?url=<percent-encoded URL>` for streams.
@@ -253,9 +371,9 @@ final class AppModel {
         }
     }
 
-    /// Dropped items: folders join the library, files play.
+    /// Dropped items: folders join the library, files (and DVD and Blu-ray folders) play.
     func handleDrop(_ urls: [URL]) {
-        let folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+        let folders = urls.filter { MediaFileTypes.isFolder($0) && DiscLayout.disc(at: $0) == nil }
         let files = urls.filter { url in !folders.contains(url) }
         if !folders.isEmpty {
             addSources(folders)
@@ -327,13 +445,16 @@ final class AppModel {
         }
     }
 
-    /// File ▸ Open… (⌘O). Any file can be chosen: if VLC can play it, Coreplay can.
+    /// File ▸ Open… (⌘O). Any file can be chosen: if VLC can play it,
+    /// Coreplay can. So can a folder: a DVD or Blu-ray folder plays as the
+    /// disc, any other folder plays what's in it.
     func presentOpenPanel() {
         let panel = NSOpenPanel()
         panel.title = "Open Media"
+        panel.message = "Choose files, a disc image, or a DVD or Blu-ray folder."
         panel.prompt = "Play"
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
         if panel.runModal() == .OK {
             open(panel.urls, securityScoped: false)
@@ -347,6 +468,42 @@ final class AppModel {
 /// out obvious non-media. Formats the system doesn't know are declared in
 /// Info.plist (UTImportedTypeDeclarations) so "Open in…" and Finder offer Coreplay.
 enum MediaFileTypes {
+    static func isFolder(_ url: URL) -> Bool {
+        url.isFileURL && (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+    }
+
+    /// What a folder holds to play, in path order, as VLC plays a folder:
+    /// media files, and DVD and Blu-ray folders and images as one item each.
+    static func mediaFiles(in folder: URL, limit: Int = 5_000) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        var found: [URL] = []
+        while let url = enumerator.nextObject() as? URL, found.count < limit {
+            if isFolder(url) {
+                if DiscLayout.kind(ofFolderAt: url) != nil {
+                    found.append(url)
+                    enumerator.skipDescendants()
+                } else if DiscLayout.structureFolders.contains(url.lastPathComponent.uppercased()) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+            guard PlaylistFile.format(of: url) == nil else { continue }
+            let format = ContainerFormat(url: url)
+            if DiscLayout.imageExtensions.contains(format.fileExtension) {
+                if DiscLayout.disc(at: url) != nil {
+                    found.append(url)
+                }
+            } else if format.support != .unknown {
+                found.append(url)
+            }
+        }
+        return found.sorted { $0.path(percentEncoded: false).localizedStandardCompare($1.path(percentEncoded: false)) == .orderedAscending }
+    }
+
     /// Cheap check used to skip obvious non-media (PDFs, images…).
     static func isLikelyPlayable(_ url: URL) -> Bool {
         if ContainerFormat(url: url).support != .unknown {

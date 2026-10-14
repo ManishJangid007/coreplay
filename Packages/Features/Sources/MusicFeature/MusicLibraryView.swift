@@ -31,6 +31,7 @@ public struct MusicLibraryView: View {
     }
 
     @Query(MusicLibraryView.recentlyAdded) private var recentAlbums: [Album]
+    @Environment(\.libraryHero) private var libraryHero
 
     private static var recentlyAdded: FetchDescriptor<Album> {
         var descriptor = FetchDescriptor<Album>(sortBy: [SortDescriptor(\Album.dateAdded, order: .reverse)])
@@ -60,6 +61,14 @@ public struct MusicLibraryView: View {
 
     public var body: some View {
         List {
+            if let libraryHero, !recentAlbums.isEmpty {
+                Section {
+                    libraryHero.make(.music, true)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 12, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+            }
             Section {
                 ForEach(Category.allCases) { category in
                     NavigationLink {

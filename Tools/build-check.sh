@@ -33,4 +33,14 @@ if [ "$mac" -eq 0 ]; then
 else
     echo "test: skipped because the macOS build failed" >> "$summary"
 fi
+# Which libVLC modules the VLCKit binary carries, and its headers, for
+# checking network and casting support without guessing.
+vlckit=$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*VLCKit.xcframework/macos*" -name VLCKit -type f 2>/dev/null | head -1)
+if [ -n "$vlckit" ]; then
+    {
+        echo "$vlckit"
+        strings -a "$vlckit" | grep -iE "smb|sftp|libssh|nfs|upnp|dlna|ftp|microdns|chromecast|bonjour|netbios|rtsp|rtmp|mms:|srt|webdav|--enable-|--disable-" | sort -u
+    } > build/vlckit-modules.txt
+    mkdir -p build/vlckit-headers && cp -R "$(dirname "$vlckit")/Headers/." build/vlckit-headers/ 2>/dev/null
+fi
 cat "$summary"

@@ -73,6 +73,12 @@ enum VorbisComment {
         tags.musicBrainzRecordingID = first("MUSICBRAINZ_TRACKID")
         tags.musicBrainzAlbumID = first("MUSICBRAINZ_ALBUMID")
         tags.musicBrainzArtistID = first("MUSICBRAINZ_ARTISTID")
+        var lowercased: [String: String] = [:]
+        for (key, values) in fields where key.hasPrefix("REPLAYGAIN_") {
+            lowercased[key.lowercased()] = values.first
+        }
+        tags.replayGain = ReplayGainTags.from(lowercasedFields: lowercased)
+            ?? ReplayGainTags.fromR128(track: first("R128_TRACK_GAIN"), album: first("R128_ALBUM_GAIN"))
         tags.artwork = EmbeddedArtwork.best(of: pictures)
         return tags
     }

@@ -1,4 +1,5 @@
 import PlaybackCore
+import QuartzCore
 import SwiftUI
 
 /// Shows the playing video. Engines render into the controller's long-lived
@@ -48,14 +49,87 @@ extension PlaybackController {
 
     private func place(_ videoView: PlatformVideoView, in container: PlatformView) {
         videoView.removeFromSuperview()
-        videoView.frame = container.bounds
-        #if canImport(UIKit)
-        videoView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        #elseif canImport(AppKit)
-        videoView.autoresizingMask = [.width, .height]
-        #endif
+        // Laid out by the container (see `VideoContainerView`), not by autoresizing.
+        videoView.autoresizingMask = []
         container.addSubview(videoView)
+        layoutVideoView(in: container)
     }
+
+    /// Lays the video view out again wherever it's showing (after the
+    /// picture is turned, mirrored or magnified).
+    func layoutVideoGeometry() {
+        guard let container = videoView.superview else { return }
+        layoutVideoView(in: container)
+    }
+
+    /// Places the video view in `container`: centred, stood on end for a
+    /// quarter turn, then turned, mirrored and magnified by the container
+    /// layer's sublayer transform. (A layer-backed view's own transform is
+    /// AppKit's to manage, so the container's sublayer transform does it,
+    /// the same way on both platforms.) A 360° video is never turned: you
+    /// look around it instead.
+    func layoutVideoView(in container: PlatformView) {
+        guard videoView.superview === container, let layer = Self.layer(of: container) else { return }
+        let bounds = container.bounds
+        #if canImport(AppKit) && !canImport(UIKit)
+        let yUp = !container.isFlipped
+        #else
+        let yUp = false
+        #endif
+        let placement = VideoPlacement(
+            transform: isSpherical ? .identity : transform,
+            zoom: isSpherical ? .none : zoom,
+            width: Double(bounds.width),
+            height: Double(bounds.height),
+            anchorX: Double(layer.anchorPoint.x),
+            anchorY: Double(layer.anchorPoint.y),
+            yUp: yUp
+        )
+        let frame = CGRect(
+            x: bounds.minX + placement.frame.x,
+            y: bounds.minY + placement.frame.y,
+            width: placement.frame.width,
+            height: placement.frame.height
+        )
+        if videoView.frame != frame {
+            videoView.frame = frame
+        }
+        let affine = placement.transform
+        let sublayerTransform = CATransform3DMakeAffineTransform(CGAffineTransform(
+            a: affine.a, b: affine.b, c: affine.c, d: affine.d, tx: affine.tx, ty: affine.ty
+        ))
+        guard !CATransform3DEqualToTransform(layer.sublayerTransform, sublayerTransform) else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.sublayerTransform = sublayerTransform
+        CATransaction.commit()
+    }
+
+    private static func layer(of view: PlatformView) -> CALayer? {
+        #if canImport(UIKit)
+        view.layer
+        #elseif canImport(AppKit)
+        view.wantsLayer = true
+        return view.layer
+        #endif
+    }
+}
+
+/// Holds the video view and lays it out whenever its size changes.
+final class VideoContainerView: PlatformView {
+    weak var controller: PlaybackController?
+
+    #if canImport(UIKit)
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        controller?.layoutVideoView(in: self)
+    }
+    #elseif canImport(AppKit)
+    override func layout() {
+        super.layout()
+        controller?.layoutVideoView(in: self)
+    }
+    #endif
 }
 
 #if canImport(UIKit)
@@ -63,7 +137,8 @@ private struct VideoSurfaceRepresentable: UIViewRepresentable {
     let controller: PlaybackController
 
     func makeUIView(context: Context) -> UIView {
-        let container = UIView()
+        let container = VideoContainerView()
+        container.controller = controller
         container.backgroundColor = .black
         container.clipsToBounds = true
         controller.mountVideoView(in: container)
@@ -93,9 +168,11 @@ private struct VideoSurfaceRepresentable: NSViewRepresentable {
     let controller: PlaybackController
 
     func makeNSView(context: Context) -> NSView {
-        let container = NSView()
+        let container = VideoContainerView()
+        container.controller = controller
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.black.cgColor
+        container.layer?.masksToBounds = true
         controller.mountVideoView(in: container)
         return container
     }
