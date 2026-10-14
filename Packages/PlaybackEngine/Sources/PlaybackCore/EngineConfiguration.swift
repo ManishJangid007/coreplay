@@ -41,6 +41,15 @@ public struct EngineConfiguration: Hashable, Sendable {
             "--no-play-and-pause",
             "--network-caching=\(max(0, networkCachingMilliseconds))",
         ]
+        #if os(macOS)
+        // VLCKit's macOS default is "macosx": an NSOpenGLView VLC draws into
+        // from its own thread. Inside SwiftUI's layer-backed views that fails
+        // an OpenGL assertion (fatal in VLCKit's development builds) when the
+        // view is resized as a video starts, e.g. while the player slides in.
+        // The Core Animation layer output draws on the main thread, in step
+        // with layout.
+        options.append("--vout=caopengllayer")
+        #endif
         options += subtitleStyle.libVLCOptions
         // Custom options come last, so they win.
         options += EngineConfiguration.parseOptions(customLibVLCOptions)

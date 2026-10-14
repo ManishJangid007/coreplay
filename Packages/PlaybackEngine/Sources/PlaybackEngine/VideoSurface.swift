@@ -55,6 +55,7 @@ extension PlaybackController {
         // Laid out by the container (see `VideoContainerView`), not by autoresizing.
         videoView.autoresizingMask = []
         container.addSubview(videoView)
+        VideoParking.orderOutIfEmpty()
         layoutVideoView(in: container)
     }
 
@@ -129,7 +130,11 @@ extension PlaybackController {
 /// (GL_INVALID_FRAMEBUFFER_OPERATION in vout_display_opengl_Prepare) and the
 /// app ends. That happened when a video started before the player had
 /// slid in, or kept drawing after its view left the screen. So a video view
-/// is always in a window: a player's, or this invisible one.
+/// VLC may draw into is always in a window: a player's, or this invisible one.
+///
+/// The parking window is ordered in only while a view waits in it. Any
+/// visible window, even this one, stops SwiftUI from opening the main window
+/// at launch and from reopening it when the Dock icon is clicked.
 @MainActor
 enum VideoParking {
     #if canImport(AppKit) && !canImport(UIKit)
@@ -143,6 +148,22 @@ enum VideoParking {
             view.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
         }
         window.contentView?.addSubview(view)
+        if !window.isVisible {
+            window.orderFrontRegardless()
+        }
+    }
+
+    /// Takes `view` out of the parking window, if it's waiting there.
+    static func unpark(_ view: PlatformView) {
+        guard let content = window?.contentView, view.superview === content else { return }
+        view.removeFromSuperview()
+        orderOutIfEmpty()
+    }
+
+    /// Orders the parking window out once no view waits in it.
+    static func orderOutIfEmpty() {
+        guard let window, window.isVisible, window.contentView?.subviews.isEmpty ?? true else { return }
+        window.orderOut(nil)
     }
 
     private static func makeWindow() -> NSWindow {
@@ -160,13 +181,14 @@ enum VideoParking {
         window.isExcludedFromWindowsMenu = true
         window.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary, .fullScreenAuxiliary]
         window.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
-        window.orderFrontRegardless()
         self.window = window
         return window
     }
     #else
     /// iOS: VLC's output there copes with a view outside a window.
     static func park(_ view: PlatformView) {}
+    static func unpark(_ view: PlatformView) {}
+    static func orderOutIfEmpty() {}
     #endif
 }
 

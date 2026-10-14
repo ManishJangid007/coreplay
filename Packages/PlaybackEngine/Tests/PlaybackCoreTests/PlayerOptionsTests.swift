@@ -185,7 +185,11 @@ struct SubtitleStyleTests {
     @Test func theStandardStyleLeavesVLCAlone() {
         #expect(SubtitleStyle.standard.libVLCOptions.isEmpty)
         #expect(SubtitleStyle.standard.summary == "Default")
+        #if os(macOS)
+        #expect(EngineConfiguration().libVLCLibraryOptions == ["--no-play-and-pause", "--network-caching=1000", "--vout=caopengllayer"])
+        #else
         #expect(EngineConfiguration().libVLCLibraryOptions == ["--no-play-and-pause", "--network-caching=1000"])
+        #endif
     }
 
     @Test func aStyleBecomesTextRendererOptions() {

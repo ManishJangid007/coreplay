@@ -218,6 +218,16 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   output to go) before it opens anything, and a preview refuses VLC while the
   player has a video open. The real-media test suites run one at a time for
   the same reason.
+- **VLC's video output on the Mac.** VLCKit's macOS default ("macosx") draws
+  into an NSOpenGLView from VLC's own thread. Inside SwiftUI's layer-backed
+  views it failed an OpenGL assertion whenever the view was resized as a
+  video started (the player sliding in, the carousel turning a page).
+  Coreplay asks for the Core Animation output (`--vout=caopengllayer`),
+  which draws on the main thread in step with layout. While no player shows
+  the video view, it waits in an invisible window (`VideoParking`). That
+  window is ordered in only while it holds a view, because any visible
+  window keeps SwiftUI from opening the main window at launch, and the app
+  delegate reopens the main window from the Dock itself.
 - **Up Next.** At an episode's end credits (a chapter named like "End
   Credits", or the last 20 seconds) the player offers the next queued episode
   and starts it after a countdown (`UpNextPolicy`). Settings ▸ Playback turns

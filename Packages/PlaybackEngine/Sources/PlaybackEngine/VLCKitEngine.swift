@@ -395,6 +395,10 @@ final class VLCKitEngine: PlaybackEngine {
     }
 
     private func finishShutdown() {
+        // libVLC has stopped drawing: the parking window can go.
+        if let fallbackDrawable {
+            VideoParking.unpark(fallbackDrawable)
+        }
         player.delegate = nil
         bridgeTask?.cancel()
         bridge.finish()

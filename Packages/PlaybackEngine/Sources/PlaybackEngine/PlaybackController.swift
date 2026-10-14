@@ -272,8 +272,6 @@ public final class PlaybackController {
         let host = VideoHostView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
         self.videoHost = host
         self.videoView = host
-        // In a window from the start (see `VideoParking`).
-        VideoParking.park(host)
         if purpose == .main {
             connectPictureInPicture()
             CastingCenter.shared.onTargetChange = { [weak self] _ in
@@ -418,6 +416,7 @@ public final class PlaybackController {
     private func start(_ item: PlaybackItem, on kind: EngineKind, autoplay: Bool, generation loadGeneration: Int) async {
         guard let engine = await prepareEngine(kind, generation: loadGeneration),
               loadGeneration == generation else { return }
+        parkVideoViewIfNeeded(for: item)
         do {
             try await engine.load(engineItem(item))
             guard loadGeneration == generation else { return }
@@ -461,6 +460,16 @@ public final class PlaybackController {
         let newEngine = factory.makeEngine(kind)
         install(newEngine)
         return newEngine
+    }
+
+    /// Puts the video view in `VideoParking` when `item` may show a picture
+    /// and no player has the view in a window, since VLC must never draw into
+    /// a view outside one. Music needs no window: VLC opens it without video.
+    /// Never at launch: the parking window would keep SwiftUI from opening
+    /// the main window.
+    private func parkVideoViewIfNeeded(for item: PlaybackItem) {
+        guard item.kind != .audio, videoView.window == nil else { return }
+        VideoParking.park(videoView)
     }
 
     private func install(_ newEngine: any PlaybackEngine) {
@@ -510,6 +519,9 @@ public final class PlaybackController {
         let task = Task { @MainActor in
             await oldEngine.shutdown()
             videoView.removeEngineContent()
+            // Nothing draws into it any more, so it needn't keep the parking
+            // window up (the next engine parks it again if it has to).
+            VideoParking.unpark(videoView)
         }
         retirement = task
         await task.value
@@ -1243,6 +1255,7 @@ public final class PlaybackController {
         } else {
             item.startPosition = resumeAt > 0.5 ? resumeAt : nil
         }
+        parkVideoViewIfNeeded(for: item)
         item = engineItem(item)
         item.externalSubtitleURLs += addedSubtitleURLs
         do {

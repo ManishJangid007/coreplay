@@ -27,7 +27,7 @@ struct CoreplayApp: App {
         // reopens from the Dock after being closed.
         Window("Coreplay", id: "main") {
             MacRootView()
-                .task { appDelegate.attach(to: model) }
+                .modifier(MacAppDelegateAttachment(appDelegate: appDelegate, model: model))
         }
         .environment(model)
         .environment(model.session)

@@ -70,7 +70,11 @@ struct EngineConfigurationTests {
 
     @Test func buildsLibraryAndMediaOptions() {
         var configuration = EngineConfiguration(networkCachingMilliseconds: 3_000, customLibVLCOptions: "--audio-time-stretch :sub-track=1 junk")
+        #if os(macOS)
+        #expect(configuration.libVLCLibraryOptions == ["--no-play-and-pause", "--network-caching=3000", "--vout=caopengllayer", "--audio-time-stretch"])
+        #else
         #expect(configuration.libVLCLibraryOptions == ["--no-play-and-pause", "--network-caching=3000", "--audio-time-stretch"])
+        #endif
         #expect(configuration.libVLCMediaOptions == [":sub-track=1"])
 
         configuration.hardwareDecoding = false

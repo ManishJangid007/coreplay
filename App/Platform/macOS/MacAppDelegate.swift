@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import SwiftUI
 
 /// Receives files opened from Finder (double-click, Open With) or dropped on
 /// the Dock icon. Implementing `application(_:open:)` keeps SwiftUI from
@@ -7,11 +8,13 @@ import AppKit
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
     private weak var model: AppModel?
     private var pendingURLs: [URL] = []
+    private var openMainWindow: (() -> Void)?
 
-    /// Connects the delegate to the app model; files that arrived during
-    /// launch are played now.
-    func attach(to model: AppModel) {
+    /// Connects the delegate to the app model and to SwiftUI's way of opening
+    /// the main window; files that arrived during launch are played now.
+    func attach(to model: AppModel, openMainWindow: @escaping () -> Void) {
         self.model = model
+        self.openMainWindow = openMainWindow
         if !pendingURLs.isEmpty {
             model.open(pendingURLs, securityScoped: false)
             pendingURLs.removeAll()
@@ -29,6 +32,16 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     /// Music keeps playing after the last window closes.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Clicking the Dock icon brings the main window back. SwiftUI does that
+    /// only when no window is visible, and the invisible window a video waits
+    /// in while no player shows it (`VideoParking`) counts as one.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard flag, let openMainWindow,
+              !sender.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) else { return true }
+        openMainWindow()
+        return false
     }
 
     // MARK: Dock menu
@@ -82,6 +95,20 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showPlayer() {
         NSApp.activate()
         model?.presentPlayer()
+    }
+}
+
+/// Attaches the app delegate from inside the main window, where SwiftUI's
+/// `openWindow` action is available.
+struct MacAppDelegateAttachment: ViewModifier {
+    let appDelegate: MacAppDelegate
+    let model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.task {
+            appDelegate.attach(to: model) { openWindow(id: "main") }
+        }
     }
 }
 #endif
