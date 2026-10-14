@@ -48,6 +48,9 @@ public struct PlaybackItem: Identifiable, Hashable, Sendable {
     /// VLC plays with its menus. `url` is then the folder holding VIDEO_TS or
     /// BDMV, or the image. The player sets this when it opens one.
     public var disc: DiscKind?
+    /// The login for a file on a share, looked up in the Keychain by the
+    /// player just before it opens the file and handed to VLC as options.
+    public var credential: NetworkCredential?
 
     public init(
         id: UUID = UUID(),

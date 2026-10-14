@@ -79,7 +79,18 @@ struct PhoneRootView: View {
             })
             .environment(model.session)
             .environment(\.appActions, actions)
+            // Logins VLC asks for while a share's video plays.
+            .networkPrompts()
             .navigationTransition(.zoom(sourceID: PlayerTransition.id, in: playerTransition))
+        }
+        .sheet(isPresented: $model.isStreamPanelPresented) {
+            OpenStreamView { url in
+                // Let the sheet finish closing before the player is presented.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    model.openStream(url)
+                }
+            }
         }
         .sheet(isPresented: $model.isSettingsPresented) {
             NavigationStack {
@@ -130,6 +141,7 @@ struct PhoneRootView: View {
         .task {
             model.startLibrary()
         }
+        .networkPrompts()
         .environment(\.appActions, actions)
     }
 
@@ -139,7 +151,8 @@ struct PhoneRootView: View {
             openFiles: { model.presentFileImporter() },
             openSettings: { model.isSettingsPresented = true },
             showPlayer: { model.presentPlayer() },
-            addLibraryFolder: { model.addLibraryFolder() }
+            addLibraryFolder: { model.addLibraryFolder() },
+            openStream: { model.isStreamPanelPresented = true }
         )
     }
 

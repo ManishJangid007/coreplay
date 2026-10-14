@@ -190,6 +190,8 @@ public final class PlaybackController {
     @ObservationIgnored public var onChange: (@MainActor (Change) -> Void)?
     /// What you chose for a file last time (the session keeps them), or `nil`.
     @ObservationIgnored public var rememberedOptions: (@MainActor (PlaybackItem) -> FileOptions?)?
+    /// The saved login for a share's file (the app reads the Keychain), or `nil`.
+    @ObservationIgnored public var networkCredentials: (@MainActor (URL) -> NetworkCredential?)?
     /// Called when you change a video's tracks, timing or picture, to remember them.
     @ObservationIgnored public var onOptionsChosen: (@MainActor (PlaybackItem, FileOptions) -> Void)?
     /// The language the app runs in, for subtitle preferences.
@@ -268,6 +270,10 @@ public final class PlaybackController {
         self.videoView = host
         if purpose == .main {
             connectPictureInPicture()
+            CastingCenter.shared.onTargetChange = { [weak self] _ in
+                guard let self else { return }
+                Task { await self.castTargetChanged() }
+            }
         }
         Self.everyController.add(self)
     }
@@ -389,6 +395,11 @@ public final class PlaybackController {
         if let remembered, remembered.needsVLC, decision.engine == .avFoundation,
            decision.reason != .protectedContent, decision.reason != .itemOverride {
             decision = EngineRouter.Decision(engine: .vlc, reason: .rememberedOptions)
+        }
+        // Only VLC can send to a Chromecast.
+        if purpose == .main, CastingCenter.shared.isCasting, decision.engine == .avFoundation,
+           decision.reason != .protectedContent {
+            decision = EngineRouter.Decision(engine: .vlc, reason: .casting)
         }
         if purpose == .preview, decision.engine == .vlc, Self.playerHasVideo {
             setState(.failed(PlaybackError(.engineFailure, "The player is showing a video.")))
@@ -566,10 +577,30 @@ public final class PlaybackController {
 
     /// The item as the engine opens it: a segment starts at its own start.
     private func engineItem(_ item: PlaybackItem) -> PlaybackItem {
-        guard let segment = item.segment else { return item }
         var opened = item
+        if NetworkAddress.isShare(item.url) {
+            // A login VLC asks for is filed under this share if remembered.
+            NetworkLoginPrompt.shared.currentAddress = item.url
+            if opened.credential == nil {
+                opened.credential = networkCredentials?(item.url)
+            }
+        }
+        guard let segment = item.segment else { return opened }
         opened.startPosition = segment.start + (item.startPosition ?? 0)
         return opened
+    }
+
+    /// Moves playback to the device chosen in the cast menu (through VLC),
+    /// or back to this one, at the same place.
+    private func castTargetChanged() async {
+        guard let item = currentItem, !item.isPreview else { return }
+        if CastingCenter.shared.isCasting, activeEngine == .avFoundation {
+            if routingReason == .protectedContent { return }
+            await handOff(to: .vlc)
+            routingReason = .casting
+        } else if activeEngine == .vlc {
+            await restartEngine()
+        }
     }
 
     /// Carries on into the next stretch of the same file (a cue sheet's next

@@ -109,6 +109,13 @@ struct MacRootView: View {
         } message: {
             Text(model.openErrorMessage ?? "")
         }
+        .sheet(isPresented: streamPanelBinding) {
+            OpenStreamView { url in
+                model.openStream(url)
+            }
+        }
+        // Logins VLC asks for, over the library and the player alike.
+        .networkPrompts()
         .environment(\.appActions, actions)
     }
 
@@ -130,7 +137,16 @@ struct MacRootView: View {
             openFiles: { model.presentOpenPanel() },
             openSettings: {},
             showPlayer: { model.presentPlayer() },
-            addLibraryFolder: { model.addLibraryFolder() }
+            addLibraryFolder: { model.addLibraryFolder() },
+            openStream: { model.isStreamPanelPresented = true }
+        )
+    }
+
+    private var streamPanelBinding: Binding<Bool> {
+        let model = model
+        return Binding(
+            get: { model.isStreamPanelPresented },
+            set: { model.isStreamPanelPresented = $0 }
         )
     }
 

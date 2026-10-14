@@ -35,6 +35,11 @@ struct CoreplayCommands: Commands {
             }
             .keyboardShortcut("o")
 
+            Button("Open Network Stream\u{2026}") {
+                model.isStreamPanelPresented = true
+            }
+            .keyboardShortcut("n")
+
             Button("Add Folder to Library\u{2026}") {
                 model.presentFolderPanel()
             }

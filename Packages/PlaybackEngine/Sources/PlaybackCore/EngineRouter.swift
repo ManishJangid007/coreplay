@@ -41,6 +41,8 @@ public struct EngineRouter: Sendable {
         case rememberedOptions
         /// A DVD or Blu-ray, which VLC plays with its menus.
         case disc(DiscKind)
+        /// Playing on a Chromecast or a TV, which only VLC can send to.
+        case casting
 
         /// Plain-language explanation for the Media Info panel.
         public var explanation: String {
@@ -63,6 +65,7 @@ public struct EngineRouter: Sendable {
             case .sphericalVideo: "360\u{00B0} video plays with VLC"
             case .rememberedOptions: "Options you chose for this file use VLC"
             case .disc(let kind): "\(kind == .dvd ? "DVDs" : "Blu-ray discs") play with VLC, menus included"
+            case .casting: "Casting to a TV or Chromecast uses VLC"
             }
         }
     }

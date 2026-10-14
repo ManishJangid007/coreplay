@@ -70,6 +70,10 @@ public struct VideoPlayerView: View {
 
             if controller.isExternalPlaybackActive {
                 externalPlaybackPlaceholder
+            } else if let device = CastingCenter.shared.activeTarget {
+                Color.black
+                    .ignoresSafeArea()
+                CastingPlaceholder(deviceName: device.name, title: controller.displayTitle)
             }
 
             statusOverlay
@@ -295,6 +299,7 @@ public struct VideoPlayerView: View {
             Spacer(minLength: 12)
 
             GlassControlGroup {
+                CastButton()
                 AirPlayButton(prioritizesVideoDevices: true)
                 #if os(macOS)
                 VolumeControl(controller: controller)

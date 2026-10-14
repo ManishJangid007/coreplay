@@ -8,17 +8,21 @@ public struct AppActions: Sendable {
     public var showPlayer: @MainActor @Sendable () -> Void
     /// Asks for a folder to add to the library (Files picker or open panel).
     public var addLibraryFolder: @MainActor @Sendable () -> Void
+    /// Shows Open Network Stream.
+    public var openStream: @MainActor @Sendable () -> Void
 
     public init(
         openFiles: @escaping @MainActor @Sendable () -> Void,
         openSettings: @escaping @MainActor @Sendable () -> Void,
         showPlayer: @escaping @MainActor @Sendable () -> Void,
-        addLibraryFolder: @escaping @MainActor @Sendable () -> Void = {}
+        addLibraryFolder: @escaping @MainActor @Sendable () -> Void = {},
+        openStream: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self.openFiles = openFiles
         self.openSettings = openSettings
         self.showPlayer = showPlayer
         self.addLibraryFolder = addLibraryFolder
+        self.openStream = openStream
     }
 
     /// Does nothing; used for previews and as the environment default.

@@ -363,3 +363,78 @@ struct PlayerToast: View {
             .accessibilityAddTraits(.isStaticText)
     }
 }
+
+/// Chromecasts and TVs (DLNA) VLC can send to, as a menu beside AirPlay.
+/// It shows only once a device has been found (or while one is playing).
+struct CastButton: View {
+    var body: some View {
+        let casting = CastingCenter.shared
+        Group {
+            if !casting.targets.isEmpty || casting.isCasting {
+                Menu {
+                    Section("Play On") {
+                        Button {
+                            casting.cast(to: nil)
+                        } label: {
+                            if casting.activeTarget == nil {
+                                Label("This Device", systemImage: "checkmark")
+                            } else {
+                                Text("This Device")
+                            }
+                        }
+                        ForEach(casting.targets) { target in
+                            Button {
+                                casting.cast(to: target)
+                            } label: {
+                                if casting.activeTarget == target {
+                                    Label(target.name, systemImage: "checkmark")
+                                } else {
+                                    Label(target.name, systemImage: target.systemImage)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "tv.badge.wifi")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(casting.isCasting ? Color.accentColor : Color.white)
+                        .frame(width: Metrics.playerButtonSize, height: Metrics.playerButtonSize)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel(Text(casting.activeTarget.map { "Playing on \($0.name)" } ?? "Cast"))
+                #if os(macOS)
+                .help(casting.activeTarget.map { "Playing on \($0.name)" } ?? "Play on a TV or Chromecast")
+                #endif
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .task {
+            casting.startSearching()
+        }
+    }
+}
+
+/// Shown instead of the picture while a Chromecast plays it.
+struct CastingPlaceholder: View {
+    let deviceName: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "tv.badge.wifi")
+                .font(.system(size: 56, weight: .light))
+            Text("Playing on \(deviceName)")
+                .font(.title3.weight(.semibold))
+            Text(title)
+                .font(.callout)
+                .foregroundStyle(Palette.secondaryOnDark)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .combine)
+    }
+}

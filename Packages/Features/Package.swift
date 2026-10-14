@@ -21,6 +21,7 @@ let package = Package(
         .package(path: "../PlaybackEngine"),
         .package(path: "../NowPlaying"),
         .package(path: "../MediaLibrary"),
+        .package(path: "../Networking"),
     ],
     targets: [
         .target(
@@ -75,7 +76,9 @@ let package = Package(
                 "MusicFeature",
                 "VideoFeature",
                 "NowPlaying",
+                "Networking",
                 .product(name: "PlaybackCore", package: "PlaybackEngine"),
+                .product(name: "PlaybackEngine", package: "PlaybackEngine"),
             ]
         ),
         .target(

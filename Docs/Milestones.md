@@ -8,7 +8,7 @@
 | 4 | Video library: filename parsing, TMDB, Movies and TV, detail pages, resume, Continue Watching | Done (checked on the Mac) |
 | 5 | Video player polish: scrub thumbnails, every Level 2 option, PiP, AirPlay, macOS menus and shortcuts | Built; builds and tests pass, needs a run with real videos and on iPhone |
 | 6 | VLC parity: feature checklist against the sample suite | Done (checked on the Mac); DVD and Blu-ray wait for a VLCKit built with disc support |
-| 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | |
+| 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | Done (checked on the Mac); indexing shares into the library waits for your go-ahead (a data model change) |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | |
 | 9 | Hardening: accessibility, performance, tests, soak testing | |
 
@@ -29,6 +29,46 @@ These come on top of the plan; nothing in the plan was dropped for them.
 | A hero carousel like the TV app and Netflix: full artwork for movies and shows, and a short clip playing for movies | Added during Milestone 6 | Done: Home, Movies and TV Shows (see below) |
 | A series page with the episodes, the one last played, and a seamless way to carry on | Added during Milestone 6 | Done: show page redesign and Up Next at the end credits (see below) |
 | Music lists that look like charts, not plain lists | Added during Milestone 6 | Done: chart rows, Top Songs, genre tiles and artist portraits (see below) |
+
+---
+
+## Milestone 7: Network — October 14, 2026
+
+### What was built
+
+**Shares** (Sources ▸ Network)
+- **Connect to Server:** SMB, SFTP, FTP or NFS, with an address such as `nas.local/Movies`, `\\SERVER\Share` or `smb://…`, a user name, password and (for SMB) a Windows domain. The folder is opened before the server is kept, so a wrong password shows straight away. Edit and Forget are in each server's menu.
+- **On this network:** Macs, PCs and NAS drives that announce their shares (Bonjour), Windows machines (NetBIOS) and UPnP/DLNA media servers appear by themselves while Sources is open.
+- **Folders:** folders first, with sizes and dates, Filter, Play All and Reload. A video plays and the folder's other videos queue after it, so a season carries on; songs queue the same way. Subtitle files with the video's name come with it.
+- **Logins** are kept in the Keychain. When a server asks for one Coreplay doesn't have, VLC's own request appears as a card over the app or the player, and Remember keeps it.
+- **Resume:** a video on a share carries on where you left it (the last 300).
+
+**Streams**
+- **File ▸ Open Network Stream…** (⌘N), also in Sources: HTTP(S), HLS, MPEG-DASH, RTSP, RTMP, RTP and UDP multicast, MMS and SRT. It names the kind of stream as you type and keeps the last 20 (never one with a password in it). Stream Buffer is in Settings ▸ Network.
+- HTTP files and HLS in formats Apple plays go to AVFoundation, so AirPlay works as usual; everything else goes to VLC.
+
+**Casting**
+- A cast button beside AirPlay (video player and Now Playing) once a Chromecast or a DLNA TV is found. Choosing one moves playback to VLC at the same place and the player shows “Playing on …”; This Device brings it back.
+
+### How it was checked
+
+- **Builds:** macOS and the iOS Simulator build cleanly.
+- **Tests on the Mac:** 330 package tests pass. New ones run an FTP server and an HTTP server inside the test process: a folder listed with a saved login (sizes, subtitle files, folders first, a folder inside), VLC asking for a login through its dialog provider and the answer going back, a wrong password failing plainly, a video played from FTP with the Keychain login handed to VLC, and HTTP files on both engines with byte ranges.
+- **Your network:** the discovery test found your Mac's SMB and SFTP shares and its NetBIOS name, and your Sony Bravia (DLNA) as a cast target.
+- **Tests on Linux:** addresses (typed, Windows-style, IPv6), logins as VLC options, file kinds and sorting, stream addresses and kinds, recent streams, saved servers and resume points.
+- **Not yet checked by hand:** casting to a TV or Chromecast, SMB, SFTP and NFS servers (the modules are in VLCKit and use the same code as FTP), and an iPhone run.
+
+### Stubbed or deferred
+
+- **Indexing shares into the library** (the build prompt's “optionally indexed”): it needs a change to the library's data model (a network kind of source), and the build prompt asks me to check with you first. Browsing and playing don't need it.
+- **Scrub previews** are still made for local files only.
+- **WebDAV:** VLC has no WebDAV browser; files on a WebDAV server play by their http(s) address.
+
+### Where this deviates from the build prompt, and why
+
+1. **On iPhone and iPad, UPnP, NetBIOS and DLNA TVs need Apple's multicast networking entitlement** (they talk to the whole network), which Apple grants per app on request. Until it's granted iOS blocks them; Bonjour discovery (most Macs, NAS drives and Chromecasts) works. The Mac has no such limit.
+2. **Saved logins go to VLC as per-item options** (`smb-user`, `ftp-pwd`…) rather than through its dialog; the dialog is still used whenever a login is missing or wrong.
+3. **VLC keeps a login that worked in memory until the app quits,** so a password changed on the server keeps working until Coreplay is relaunched.
 
 ---
 

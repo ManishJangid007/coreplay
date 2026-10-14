@@ -1,5 +1,6 @@
 import Foundation
 import MediaLibrary
+import Networking
 import NowPlaying
 import Observation
 import PlaybackCore
@@ -34,6 +35,8 @@ final class AppModel {
     var isPlayerPresented = false
     /// iOS: the Settings sheet.
     var isSettingsPresented = false
+    /// Open Network Stream.
+    var isStreamPanelPresented = false
     /// Shown when nothing in a selection could be played.
     var openErrorMessage: String?
 
@@ -62,6 +65,15 @@ final class AppModel {
         let library = self.library
         session.subtitleSearchRequest = { item in
             library.subtitleSearchRequest(for: item)
+        }
+        // Shares: the player logs in with what's in the Keychain, and logins
+        // VLC asked for are kept there when you tick Remember.
+        session.controller.networkCredentials = { url in
+            let server = NetworkStore.shared.server(for: url)
+            return NetworkKeychain.credential(for: url, user: server?.user)
+        }
+        NetworkLoginPrompt.shared.onRemember = { url, credential in
+            NetworkKeychain.save(credential, for: url)
         }
         connectPictureInPicture()
     }
@@ -136,6 +148,7 @@ final class AppModel {
             var tracker = ListeningTracker()
             var progress = WatchProgressTracker()
             var libraryIDs: [UUID: UUID] = [:] // playback item → library file
+            var networkURLs: [UUID: URL] = [:] // playback item → video on a share
             var timedItem: UUID?
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
@@ -144,6 +157,8 @@ final class AppModel {
                 let item = controller.currentItem
                 if let item, let libraryID = item.libraryID {
                     libraryIDs[item.id] = libraryID
+                } else if let item, item.kind == .video, !item.isPreview, NetworkAddress.isShare(item.url) {
+                    networkURLs[item.id] = item.url
                 }
                 if item?.kind != .video,
                    tracker.update(itemID: item?.id, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying),
@@ -152,12 +167,24 @@ final class AppModel {
                 }
                 // Videos from the library: resume positions and watched state.
                 // A disc counts only while its film plays, not its menus or extras.
-                let videoID = item?.kind == .video && item?.libraryID != nil ? item?.id : nil
+                let videoID = item?.kind == .video && (item?.libraryID != nil || item.map { networkURLs[$0.id] != nil } == true) ? item?.id : nil
                 let credits = UpNextPolicy.creditsStart(chapters: controller.chapters, duration: controller.duration)
                 let saves = videoID != nil && !controller.isPlayingMainTitle
                     ? []
                     : progress.update(itemID: videoID, position: controller.currentTime, duration: controller.duration, isPlaying: controller.isPlaying, creditsStart: credits)
                 for save in saves {
+                    if let url = networkURLs[save.itemID] {
+                        // Videos on shares: only where to carry on from.
+                        if case .resume(let position) = save.outcome {
+                            NetworkStore.shared.setResumePosition(position, for: url)
+                        } else {
+                            NetworkStore.shared.setResumePosition(nil, for: url)
+                        }
+                        if save.itemID != item?.id {
+                            networkURLs[save.itemID] = nil
+                        }
+                        continue
+                    }
                     guard let libraryID = libraryIDs[save.itemID] else { continue }
                     self.library.recordProgress(libraryID: libraryID, position: save.position, duration: save.duration, outcome: save.outcome)
                     if save.itemID != item?.id {
@@ -211,8 +238,14 @@ final class AppModel {
             }
             return
         }
-        let items = candidates
-            .map { PlaybackItem(url: $0, requiresSecurityScope: securityScoped && $0.isFileURL) }
+        let items = candidates.map { url in
+            var item = PlaybackItem(url: url, requiresSecurityScope: securityScoped && url.isFileURL)
+            // A video on a share carries on where it was left.
+            if item.kind == .video, NetworkAddress.isShare(url) {
+                item.startPosition = NetworkStore.shared.resumePosition(for: url)
+            }
+            return item
+        }
         let firstKind = items.first?.kind
         Task {
             await session.play(items)
@@ -302,6 +335,12 @@ final class AppModel {
         }
     }
     #endif
+
+    /// Plays an address from Open Network Stream, and keeps it in the recent list.
+    func openStream(_ url: URL) {
+        NetworkStore.shared.noteStream(url)
+        open([url], securityScoped: false)
+    }
 
     /// Handles `onOpenURL`: file URLs from Files / Finder, and
     /// `coreplay://open?url=<percent-encoded URL>` for streams.

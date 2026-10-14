@@ -296,6 +296,7 @@ public struct NowPlayingView: View {
             }
             Spacer()
             AirPlayButton()
+            CastButton()
             Spacer()
             NowPlayingRoundButton(systemImage: "list.bullet", label: "Up Next", isOn: showsQueue) {
                 showsQueue.toggle()

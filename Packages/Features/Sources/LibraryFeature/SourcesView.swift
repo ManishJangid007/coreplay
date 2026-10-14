@@ -1,5 +1,7 @@
 import DesignSystem
 import MediaLibrary
+import Networking
+import PlaybackEngine
 import SwiftData
 import SwiftUI
 
@@ -15,6 +17,9 @@ public struct SourcesView: View {
     @Environment(\.appActions) private var actions
     @Query(sort: \Source.dateAdded) private var sources: [Source]
     @State private var pendingRemoval: Source?
+    @State private var isConnecting = false
+    @State private var editingServer: SavedServer?
+    @State private var connectedPlace: NetworkPlace?
 
     public init() {}
 
@@ -52,8 +57,29 @@ public struct SourcesView: View {
                     }
                 }
             }
+
+            NetworkSourcesSection(isConnecting: $isConnecting, editing: $editingServer)
         }
         .navigationTitle("Sources")
+        .navigationDestination(for: NetworkPlace.self) { place in
+            NetworkFolderView(place: place)
+        }
+        .navigationDestination(item: $connectedPlace) { place in
+            NetworkFolderView(place: place)
+        }
+        .sheet(isPresented: $isConnecting) {
+            ConnectToServerView(existing: nil) { server in
+                connectedPlace = server.url.map { NetworkPlace(url: $0, title: server.displayName, serverID: server.id) }
+            }
+        }
+        .sheet(item: $editingServer) { server in
+            ConnectToServerView(existing: server) { _ in }
+        }
+        .task {
+            // Servers on the network appear while Sources is open (on iOS this
+            // is when the local network permission is asked for).
+            NetworkDiscovery.shared.start()
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -72,6 +98,13 @@ public struct SourcesView: View {
                         }
                     }
                     #endif
+                    Divider()
+                    Button("Connect to Server\u{2026}", systemImage: "server.rack") {
+                        isConnecting = true
+                    }
+                    Button("Open Network Stream\u{2026}", systemImage: "antenna.radiowaves.left.and.right") {
+                        actions.openStream()
+                    }
                     Divider()
                     Button("Check for New Files", systemImage: "arrow.clockwise") {
                         library.scanAll()

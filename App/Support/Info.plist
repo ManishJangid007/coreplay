@@ -37,7 +37,16 @@
 
 	<!-- Shown before reaching devices on the local network (streams, cameras, shares). -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Coreplay plays streams and shared folders from devices on your network.</string>
+	<string>Coreplay finds shared folders, media servers and Chromecasts on your network, and plays from them.</string>
+	<!-- Bonjour services VLC's discovery looks for: shares, and Chromecasts for casting. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_smb._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+		<string>_ftp._tcp</string>
+		<string>_nfs._tcp</string>
+		<string>_googlecast._tcp</string>
+	</array>
 
 	<!-- iOS: show Documents in Files ("On My iPhone ▸ Coreplay") and Finder file sharing,
 	     and open files in place instead of copying them into an Inbox. -->

@@ -21,5 +21,9 @@
 	<!-- Streams, network shares and (opt-in) metadata lookups. -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- UPnP discovery listens for servers' replies, and a Chromecast pulls
+	     the video from a small server VLC runs while casting. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 </dict>
 </plist>

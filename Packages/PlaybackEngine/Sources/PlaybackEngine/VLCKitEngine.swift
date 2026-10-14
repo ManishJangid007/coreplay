@@ -172,6 +172,10 @@ final class VLCKitEngine: PlaybackEngine {
         for option in mediaOptions {
             media.addOption(option)
         }
+        // A saved login for a share, as options: never in the URL.
+        for option in item.credential?.vlcOptions(for: item.url) ?? [] {
+            media.addOption(option)
+        }
         if item.kind == .audio {
             // Never open a video output for music (embedded cover art would
             // otherwise become a "video" track on some containers).
@@ -214,6 +218,8 @@ final class VLCKitEngine: PlaybackEngine {
         appliedPictureOptions = false
 
         player.media = media
+        // A Chromecast chosen in the cast menu (never for a preview clip).
+        player.setRendererItem(item.isPreview ? nil : CastingCenter.shared.activeRendererItem)
         setState(.opening)
     }
 
@@ -779,6 +785,8 @@ final class VLCLibraryProvider {
         }
         let library = VLCLibrary(options: options)
         library.setHumanReadableName("Coreplay", withHTTPUserAgent: "Coreplay/1.0")
+        // Logins VLC asks for while playing from a share or a stream.
+        NetworkLoginPrompt.shared.attach(to: library)
         self.library = library
         self.options = options
         return library

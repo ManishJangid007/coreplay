@@ -76,7 +76,8 @@ Packages/
                       file-name fallbacks, name keys, video names and container
                       details (MP4, MKV, AVI), .nfo files, the TMDB, TVmaze
                       and Wikipedia clients
-  Networking/         Placeholder (Milestone 7)
+  Networking/         Saved servers, logins in the Keychain, recent streams,
+                      where network videos were left
 ```
 
 The app target uses folder-synchronized groups: new files in `App/Coreplay` or
@@ -252,6 +253,45 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
 - **Online subtitles.** With your OpenSubtitles.com API key (Settings,
   kept in the Keychain), Subtitles ▸ Search OpenSubtitles finds subtitles by
   the file's hash, then by title or episode, and loads the one you pick.
+
+## How networking works
+
+Everything on the network goes through VLC, in PlaybackEngine (the only
+code that imports VLCKit); the rest of the app sees plain values from
+PlaybackCore (`NetworkProtocol`, `NetworkEntry`, `NetworkCredential`,
+`StreamAddress`).
+
+- **Shares** (SMB 1/2/3, FTP, SFTP, NFS, UPnP/DLNA) are browsed with
+  `NetworkBrowser`: a folder's URL is parsed by libVLC and its sub-items are
+  the files and folders in it, with sizes and dates where the server gives
+  them. Sources ▸ Network lists saved servers and the ones found on the
+  network; a folder plays what you tap and queues the rest of its videos
+  (or songs) after it, with subtitle files of the same name.
+- **Finding servers:** `NetworkDiscovery` runs VLC's local-network discovery
+  modules (Bonjour, UPnP, and NetBIOS for Windows machines) while Sources is
+  open.
+- **Logins** are kept in the Keychain (`NetworkKeychain`, internet
+  passwords per protocol, server, port and user), looked up just before a
+  file plays and handed to VLC as per-item options (`smb-user`, `ftp-pwd`,
+  …), never written into a URL or a file. When VLC needs one it doesn't
+  have, its dialog provider asks (`NetworkLoginPrompt`, shown as a card over
+  the app or the player), and Remember files it under that server.
+- **Streams:** File ▸ Open Network Stream (⌘N), or Sources ▸ Open Network
+  Stream: HTTP(S), HLS, MPEG-DASH, RTSP, RTMP, RTP/UDP multicast, MMS and SRT.
+  HTTP files and HLS in formats Apple plays go to AVFoundation (so AirPlay
+  works natively), everything else to VLC. The last 20 addresses are kept
+  (never one with a password in it). Settings ▸ Network ▸ Stream Buffer is
+  VLC's network caching.
+- **Resume:** a video on a share carries on where it was left
+  (`NetworkStore`, the last 300 videos, by address without the login).
+- **Casting:** `CastingCenter` runs VLC's renderer discovery (Bonjour for
+  Chromecasts, UPnP for DLNA TVs); the cast button beside AirPlay (video
+  player and Now Playing) shows once a device is found. Choosing one moves playback to VLC at the same place and sends
+  it to the device; the player shows "Playing on …".
+- **Permissions:** iOS asks for local network access the first time Sources
+  is opened (`NSBonjourServices` lists the services VLC looks for). On the
+  Mac the sandbox needs `network.server` too: UPnP discovery listens for
+  replies, and a Chromecast pulls the video from VLC.
 
 ## Brand
 
