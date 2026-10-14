@@ -1005,7 +1005,8 @@ public final class PlaybackController {
 
     private func updateFactoryConfiguration() {
         var effective = configuration
-        effective.subtitleStyle = subtitleStyle
+        // No style chosen here: VLC follows Subtitles & Captioning, as AVFoundation does.
+        effective.subtitleStyle = subtitleStyle.isStandard ? SystemCaptionStyle.current() : subtitleStyle
         effective.subtitleEncoding = subtitleEncoding
         factory.configuration = effective
         router.alwaysUseVLC = configuration.alwaysUseVLC

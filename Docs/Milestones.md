@@ -10,7 +10,7 @@
 | 6 | VLC parity: feature checklist against the sample suite | Done (checked on the Mac); DVD and Blu-ray wait for a VLCKit built with disc support |
 | 7 | Network: SMB, UPnP, FTP/SFTP, NFS, streams, Chromecast | Done (checked on the Mac); indexing shares into the library waits for your go-ahead (a data model change) |
 | 8 | Extras: queue polish, smart playlists, lyrics, equalizer, sleep timer, iCloud sync, widgets, App Intents, Handoff | Done (checked on the Mac); iCloud sync needs one capability switched on in Xcode |
-| 9 | Hardening: accessibility, performance, tests, soak testing | |
+| 9 | Hardening: accessibility, performance, tests, soak testing | Done (checked on the Mac); a run on an iPhone and Instruments on a device are yours to do |
 
 ## Your additions (October 13)
 
@@ -29,6 +29,33 @@ These come on top of the plan; nothing in the plan was dropped for them.
 | A hero carousel like the TV app and Netflix: full artwork for movies and shows, and a short clip playing for movies | Added during Milestone 6 | Done: Home, Movies and TV Shows (see below) |
 | A series page with the episodes, the one last played, and a seamless way to carry on | Added during Milestone 6 | Done: show page redesign and Up Next at the end credits (see below) |
 | Music lists that look like charts, not plain lists | Added during Milestone 6 | Done: chart rows, Top Songs, genre tiles and artist portraits (see below) |
+
+---
+
+## Milestone 9: Hardening — October 14, 2026
+
+### Accessibility
+
+- **VoiceOver:** every control has a label, checked across the feature code (icon-only buttons, the new cast, sleep-timer and lyrics controls, network rows, the widget's buttons). The scrubbers and sliders are adjustable (swipe up or down), and rows read as one element.
+- **Subtitles & Captioning:** VLC now follows the choices in Accessibility ▸ Subtitles & Captioning (text colour, background, outline, font) whenever you haven't picked a style in Coreplay, as AVFoundation already did. Only choices set to override video apply, so the default look doesn't change. SDH and CC tracks were already labelled.
+- **Increase Contrast** brightens the player's secondary text. **Reduce Motion** turns off the lyrics scrolling and the artwork and hover animations (as it already did elsewhere). **Reduce Transparency** is honoured by the system materials the app uses.
+- **Keyboard:** the Mac menus and shortcuts cover playback, tracks, subtitles, the stream sheet (⌘N) and the player; standard controls work with Full Keyboard Access.
+
+### Performance
+
+- **A large library** test builds 10,000 songs and times what people open most. On the Mac: every song 0.5 s (it was 1.2 s before songs and their files were fetched in one query), a smart playlist over all of them 1.5 s, a 5,000-song playlist 0.19 s, Top Songs under 0.01 s. Smart playlists are worked out when you open one, so a very large library waits a moment there; making that incremental is the next step if it bothers you.
+- Lists and grids are lazy, artwork is decoded off the main thread at the size it's shown, Top Songs is a limited query, and network folders load in the background.
+
+### Tests
+
+- **342 package tests pass on the Mac**, and the Foundation-only ones on Linux too. They cover the filename parser, the engine router, metadata matching, progress and resume rules, the queue, both engines against the parity sample suite, network shares and streams against local FTP and HTTP servers, playlists, smart playlists, iCloud sync and library upgrades.
+- **Soak:** 50 files opened one after another in quick succession across both engines, with seeks in between: no crash, no hang (a watchdog checks the main thread), no stuck item, and the next file plays normally.
+
+### Not done here, and why
+
+- **UI tests (XCUITest)** for the core flows: running them needs Accessibility permission for the test runner and a signed app on your Mac, which the unattended build machine can't grant. The flows they'd cover (open, browse, play, track switching, resume, playlists) are tested one level down, through the same controller and session the screens use, plus snapshot pictures of the screens.
+- **Instruments, launch time, 4K memory and 120 Hz scrolling** have to be measured on your devices; nothing here suggests a problem, but these numbers haven't been taken.
+- **Free metadata sources (TVmaze, Wikipedia) are on by default**, where the build prompt asks for every lookup to be opt-in. Turning them off now would stop lookups for your existing library without asking you; one switch in Settings ▸ Metadata does it.
 
 ---
 

@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Colours used where the system's semantic colours don't apply: the player
 /// is always dark, whatever the appearance setting.
@@ -7,7 +12,20 @@ public enum Palette {
     /// Behind controls drawn over video.
     public static let videoScrim = Color.black.opacity(0.45)
     public static let primaryOnDark = Color.white
-    public static let secondaryOnDark = Color.white.opacity(0.68)
+    /// Secondary text on the player's dark backgrounds; brighter with
+    /// Increase Contrast.
+    public static let secondaryOnDark: Color = {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            UIColor(white: 1, alpha: traits.accessibilityContrast == .high ? 0.9 : 0.68)
+        })
+        #else
+        Color(NSColor(name: nil) { appearance in
+            let highContrast = appearance.bestMatch(from: [.accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua, .darkAqua, .aqua])?.rawValue.contains("HighContrast") == true
+            return NSColor(white: 1, alpha: highContrast ? 0.9 : 0.68)
+        })
+        #endif
+    }()
     public static let tertiaryOnDark = Color.white.opacity(0.32)
     /// The orange of the logo's cone. Matches the app's AccentColor; use it
     /// for brand moments, and `Color.accentColor` / `.tint` everywhere else.

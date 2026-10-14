@@ -179,7 +179,13 @@ extension LibraryManager {
 
     /// Every song that can play now, by title.
     public func allAvailableTracks() -> [Track] {
-        ((try? context.fetch(FetchDescriptor<Track>(sortBy: [SortDescriptor(\.sortTitle)]))) ?? []).filter(\.isAvailable)
+        var descriptor = FetchDescriptor<Track>(
+            predicate: #Predicate { $0.file?.isAvailable == true },
+            sortBy: [SortDescriptor(\.sortTitle)]
+        )
+        // Each song's file is read too: fetched together, not one by one.
+        descriptor.relationshipKeyPathsForPrefetching = [\.file]
+        return (try? context.fetch(descriptor)) ?? []
     }
 
     // MARK: Helpers
@@ -199,7 +205,7 @@ extension LibraryManager {
     }
 
     private func smartTracks(_ rules: SmartPlaylistRules) -> [Track] {
-        let tracks = ((try? context.fetch(FetchDescriptor<Track>())) ?? []).filter(\.isAvailable)
+        let tracks = allAvailableTracks()
         let records = (try? context.fetch(FetchDescriptor<PlaybackRecord>())) ?? []
         let byKey = Dictionary(records.map { ($0.contentKey, $0) }, uniquingKeysWith: { first, _ in first })
         return rules.select(tracks) { track in

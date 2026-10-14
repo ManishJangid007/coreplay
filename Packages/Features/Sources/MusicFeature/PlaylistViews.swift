@@ -108,6 +108,7 @@ public struct PlaylistsView: View {
 /// colour), its name and what kind it is.
 struct PlaylistTile: View {
     @Environment(LibraryManager.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let playlist: Playlist
     @State private var isHovering = false
 
@@ -117,7 +118,7 @@ struct PlaylistTile: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: .black.opacity(isHovering ? 0.3 : 0.15), radius: isHovering ? 12 : 6, y: 4)
-                .scaleEffect(isHovering ? 1.03 : 1)
+                .scaleEffect(isHovering && !reduceMotion ? 1.03 : 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.name)
                     .font(.subheadline.weight(.semibold))

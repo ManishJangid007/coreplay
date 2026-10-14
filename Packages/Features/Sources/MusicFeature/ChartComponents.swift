@@ -185,6 +185,7 @@ struct ChartColumnHeader: View {
 /// corner, as in Music's and Spotify's browse pages.
 struct GenreTile: View {
     @Environment(LibraryManager.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let genre: Genre
     @State private var isHovering = false
 
@@ -205,7 +206,7 @@ struct GenreTile: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             .padding(.trailing, 10)
             .padding(.bottom, -6)
-            .scaleEffect(isHovering ? 1.05 : 1, anchor: .bottomTrailing)
+            .scaleEffect(isHovering && !reduceMotion ? 1.05 : 1, anchor: .bottomTrailing)
             VStack(alignment: .leading, spacing: 4) {
                 Text(genre.name)
                     .font(.title3.weight(.heavy))
@@ -255,6 +256,7 @@ struct GenreTile: View {
 /// An artist as a round portrait with their name and what's in the library.
 struct ArtistTile: View {
     @Environment(LibraryManager.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: Artist
     @State private var isHovering = false
 
@@ -262,7 +264,7 @@ struct ArtistTile: View {
         VStack(spacing: 10) {
             ArtistPortrait(artworkURL: library.artworkURL(artist.artworkKey, .grid), size: 150)
                 .shadow(color: .black.opacity(isHovering ? 0.35 : 0.2), radius: isHovering ? 14 : 8, y: 4)
-                .scaleEffect(isHovering ? 1.04 : 1)
+                .scaleEffect(isHovering && !reduceMotion ? 1.04 : 1)
             VStack(spacing: 2) {
                 Text(artist.name)
                     .font(.subheadline.weight(.semibold))

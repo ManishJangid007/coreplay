@@ -252,6 +252,9 @@ Xcode treat them as outside dependencies with hidden warnings and no tests.
   ReplayGain (track or album) read from the tags; libVLC 4's volume
   normaliser can't be switched on from a player (its audio filter belongs to
   the equalizer), so there's no "normalise" for files without ReplayGain.
+- **Captions.** When you haven't chosen a subtitle style, VLC follows
+  Accessibility ▸ Subtitles & Captioning (`SystemCaptionStyle`), as
+  AVFoundation does; only choices set to override video apply.
 - **Online subtitles.** With your OpenSubtitles.com API key (Settings,
   kept in the Keychain), Subtitles ▸ Search OpenSubtitles finds subtitles by
   the file's hash, then by title or episode, and loads the one you pick.
