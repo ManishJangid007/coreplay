@@ -13,8 +13,8 @@ import AppKit
 /// default; tap (or move the pointer) to show round glass buttons along the
 /// top, plain transport in the middle, and the title, scrubber (with frame
 /// previews) and audio, speed and options buttons along the bottom. Controls
-/// hide after three seconds of playback. Every other option opens in a panel
-/// over the video, so nothing leaves the player.
+/// (and, on the Mac, the pointer) hide after three seconds of playback. Every
+/// other option opens in a panel over the video, so nothing leaves the player.
 public struct VideoPlayerView: View {
     @Environment(PlaybackSession.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -123,6 +123,11 @@ public struct VideoPlayerView: View {
             if case .active = phase, !showsOptions {
                 showControls()
             }
+        }
+        // The pointer goes with the controls, as in the TV app and web players.
+        .background {
+            PointerHider(isHidden: !controlsVisible && !showsOptions)
+                .ignoresSafeArea()
         }
         #endif
         .focusable()
@@ -850,3 +855,51 @@ public struct VideoPlayerView: View {
         return "\(amount) s \(value > 0 ? "later" : "earlier")"
     }
 }
+
+#if os(macOS)
+/// Hides the pointer when the controls hide, if it rests over the player.
+/// Moving it brings the pointer back, and the controls with it.
+private struct PointerHider: NSViewRepresentable {
+    let isHidden: Bool
+
+    func makeNSView(context: Context) -> PointerHidingView {
+        PointerHidingView()
+    }
+
+    func updateNSView(_ view: PointerHidingView, context: Context) {
+        view.hidesPointer = isHidden
+    }
+
+    static func dismantleNSView(_ view: PointerHidingView, coordinator: Coordinator) {
+        view.hidesPointer = false
+    }
+}
+
+private final class PointerHidingView: NSView {
+    var hidesPointer = false {
+        didSet {
+            guard hidesPointer != oldValue else { return }
+            if !hidesPointer {
+                NSCursor.setHiddenUntilMouseMoves(false)
+            } else if isPointerOver {
+                NSCursor.setHiddenUntilMouseMoves(true)
+            }
+        }
+    }
+
+    /// Asks where the pointer is now rather than waiting for a hover: it may
+    /// not have moved since the player opened. A window in front of the
+    /// player (a menu, another app) keeps its pointer.
+    private var isPointerOver: Bool {
+        guard let window else { return false }
+        let pointer = NSEvent.mouseLocation
+        guard NSWindow.windowNumber(at: pointer, belowWindowWithWindowNumber: 0) == window.windowNumber else {
+            return false
+        }
+        return bounds.contains(convert(window.convertPoint(fromScreen: pointer), from: nil))
+    }
+
+    // Clicks go to the player above.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+#endif
